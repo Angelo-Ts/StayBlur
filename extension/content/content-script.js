@@ -21,7 +21,7 @@
   const context = () => ({ domain: location.hostname, path: location.pathname || '/' });
   const contextKey = () => `${location.hostname}|${location.pathname || '/'}`;
 
-  let settingsCache = { extensionEnabled: true };
+  let settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 };
   let settingsReady = false;
   let rulesCache = null;
   let rulesCacheContext = '';
@@ -29,8 +29,8 @@
 
   async function getSettings() {
     if (settingsReady) return settingsCache;
-    const r = await chrome.storage.local.get({ [SETTINGS_KEY]: { extensionEnabled: true } });
-    settingsCache = { extensionEnabled: true, ...(r[SETTINGS_KEY] || {}) };
+    const r = await chrome.storage.local.get({ [SETTINGS_KEY]: { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 } });
+    settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60, ...(r[SETTINGS_KEY] || {}) };
     settingsReady = true;
     return settingsCache;
   }
@@ -315,7 +315,11 @@
     if (t.closest(`[${ATTR}]`)) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); stopSelection(); return; }
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); stopSelection();
     const c = context(), now = new Date().toISOString();
-    const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, enabled: true, status: 'active', effect: 'blur', intensity: 60, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
+    const settings = await getSettings();
+    const allowedEffects = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']);
+    const effect = allowedEffects.has(settings.selectionEffect) ? settings.selectionEffect : 'blur';
+    const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60)));
+    const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, enabled: true, status: 'active', effect, intensity, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
     await saveRule(rule); apply(t, rule); retryCounts.delete(rule.ruleId);
   }
   function onKey(e) { if (e.key === 'Escape') stopSelection(); }
@@ -425,7 +429,7 @@
 
   chrome.storage.onChanged.addListener(changes => {
     if (changes[SETTINGS_KEY]) {
-      settingsCache = { extensionEnabled: true, ...(changes[SETTINGS_KEY].newValue || {}) };
+      settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60, ...(changes[SETTINGS_KEY].newValue || {}) };
       settingsReady = true;
       if (settingsCache.extensionEnabled === false) removeAll();
       else queueEvaluate(0);
