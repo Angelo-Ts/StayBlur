@@ -21,6 +21,38 @@
   const context = () => ({ domain: location.hostname, path: location.pathname || '/' });
   const contextKey = () => `${location.hostname}|${location.pathname || '/'}`;
 
+  function frameDescriptor(frame) {
+    const tag = (frame?.tagName || 'iframe').toLowerCase();
+    const id = typeof frame?.id === 'string' ? frame.id.trim() : '';
+    const name = typeof frame?.name === 'string' ? frame.name.trim() : '';
+    const parent = frame?.parentElement;
+    const siblings = parent ? [...parent.children].filter(el => el.tagName === frame.tagName) : [];
+    const siblingIndex = siblings.indexOf(frame);
+    if (id) return `${tag}#${id}`;
+    if (name) return `${tag}[name=${name}]`;
+    return `${tag}[n=${siblingIndex >= 0 ? siblingIndex : '?'}]`;
+  }
+  function frameContextKey() {
+    const chain = [];
+    try {
+      let currentWindow = window;
+      while (currentWindow !== currentWindow.top) {
+        const frame = currentWindow.frameElement;
+        if (!(frame instanceof Element)) return null;
+        chain.unshift(frameDescriptor(frame));
+        currentWindow = currentWindow.parent;
+      }
+    } catch (_) {
+      return null;
+    }
+    return chain.length ? `frame:${chain.map((part, depth) => `${depth}:${part}`).join('/')}` : 'top';
+  }
+  function ruleAppliesToCurrentFrame(rule) {
+    const current = frameContextKey();
+    if (!current) return false;
+    return rule.frameKey ? rule.frameKey === current : current === 'top';
+  }
+
   let settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 };
   let settingsReady = false;
   let rulesCache = null;
@@ -48,7 +80,7 @@
       const ids = [...new Set([...(r[keyDomain(c.domain)] || []), ...(r[keyPage(c.domain, c.path)] || [])])];
       if (!ids.length) return [];
       const loaded = await chrome.storage.local.get(ids.map(keyRule));
-      return ids.map(id => loaded[keyRule(id)]).filter(Boolean);
+      return ids.map(id => loaded[keyRule(id)]).filter(Boolean).filter(ruleAppliesToCurrentFrame);
     })();
     rulesLoad = { context: ck, promise };
     const result = await promise;
@@ -219,35 +251,42 @@
     ranked.sort((a, b) => b.totalScore - a.totalScore || b.independent - a.independent);
     const a = ranked[0], b = ranked[1];
     if (!a || a.totalScore < .6) return { status: 'notFound', confidence: a?.totalScore || 0, selected: a };
-    if (a.totalScore < .85 || a.independent < 3 || Math.abs(a.totalScore - (b?.totalScore || 0)) <= .05) return { status: 'ambiguous', confidence: a.totalScore, selected: a };
+    if (a.totalScore < .85 || a.independent < 3 || (b && Math.abs(a.totalScore - b.totalScore) <= .05)) return { status: 'ambiguous', confidence: a.totalScore, selected: a };
     return { status: 'active', confidence: a.totalScore, selected: a };
   }
 
-  const original = new WeakMap();
-  const applied = new Map();
+  const shadowRoots = new Set();
+  function findShadowRootTargets() { return shadowRoots; }
+  let styleReady = false;
   function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement('style'); s.id = STYLE_ID;
-    s.textContent = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:blur(8px) contrast(1.8)!important}.pb-effect-blackout{filter:brightness(0)!important;color:transparent!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}.${HIGHLIGHT}{outline:2px solid #00a3ff!important;outline-offset:1px!important;cursor:crosshair!important}`;
-    (document.head || document.documentElement).appendChild(s);
+    if (styleReady || document.getElementById(STYLE_ID)) { styleReady = true; return; }
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:blur(8px) contrast(1.8)!important}.pb-effect-blackout{filter:brightness(0)!important;color:transparent!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}`;
+    (document.head || document.documentElement).appendChild(style);
+    styleReady = true;
   }
+  const original = new WeakMap(), applied = new Map();
   function apply(el, rule) {
-    if (!el) return;
+    if (!(el instanceof Element)) return;
     ensureStyle();
-    if (!original.has(el)) original.set(el, { blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') });
+    if (!original.has(el)) original.set(el, { filter: el.style.filter, visibility: el.style.visibility, color: el.style.color, textShadow: el.style.textShadow, blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') });
     const px = Math.max(0, Math.min(100, Number(rule.intensity ?? 60)));
     EFFECT_CLASSES.slice(1).forEach(c => el.classList.remove(c));
     el.classList.add('pb-effect-base', `pb-effect-${rule.effect || 'blur'}`);
     el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
-    el.setAttribute(ATTR, rule.ruleId);
-    applied.set(rule.ruleId, el);
+    el.setAttribute(ATTR, rule.ruleId); applied.set(rule.ruleId, el);
   }
   function removeElement(el) {
-    if (!el) return;
+    if (!(el instanceof Element)) return;
     EFFECT_CLASSES.forEach(c => el.classList.remove(c));
     const o = original.get(el);
     if (o) {
+      if (o.filter) el.style.setProperty('filter', o.filter); else el.style.removeProperty('filter');
+      if (o.visibility) el.style.setProperty('visibility', o.visibility); else el.style.removeProperty('visibility');
+      if (o.color) el.style.setProperty('color', o.color); else el.style.removeProperty('color');
+      if (o.textShadow) el.style.setProperty('text-shadow', o.textShadow); else el.style.removeProperty('text-shadow');
       if (o.blur) el.style.setProperty('--pb-blur', o.blur); else el.style.removeProperty('--pb-blur');
       if (o.strong) el.style.setProperty('--pb-strong-blur', o.strong); else el.style.removeProperty('--pb-strong-blur');
       original.delete(el);
@@ -319,7 +358,7 @@
     const allowedEffects = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']);
     const effect = allowedEffects.has(settings.selectionEffect) ? settings.selectionEffect : 'blur';
     const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60)));
-    const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, enabled: true, status: 'active', effect, intensity, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
+    const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, frameKey: frameContextKey() || 'unknown', enabled: true, status: 'active', effect, intensity, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
     await saveRule(rule); apply(t, rule); retryCounts.delete(rule.ruleId);
   }
   function onKey(e) { if (e.key === 'Escape') stopSelection(); }
@@ -331,6 +370,7 @@
     await updateRule(updated);
   }
   async function evaluateRule(rule) {
+    if (!ruleAppliesToCurrentFrame(rule)) { removeRule(rule.ruleId); return { status: 'notApplicable', confidence: 0 }; }
     if (!rule.enabled || !(await getSettings()).extensionEnabled) { removeRule(rule.ruleId); return { status: 'disabled', confidence: 0 }; }
     if (pageSuppressed.has(rule.ruleId)) { removeRule(rule.ruleId); return { status: 'suppressed', confidence: 0 }; }
     const result = await match(rule.fingerprint);
