@@ -28,6 +28,7 @@ const args = [
   '--disable-dev-shm-usage',
   '--no-first-run',
   '--no-default-browser-check',
+  '--virtual-time-budget=2500',
   `--user-data-dir=${resolve('.tmp/browser-smoke-profile')}`,
   `--load-extension=${extensionDir}`,
   '--dump-dom',
@@ -44,19 +45,30 @@ try {
     const child = spawn(chromium, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn(value);
+    };
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(rejectPromise, new Error(`browser smoke timed out after 30s: ${stderr.slice(-4000)}`));
+    }, 30000);
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', rejectPromise);
+    child.on('error', (error) => finish(rejectPromise, error));
     child.on('close', (code) => {
-      if (code === 0) resolvePromise(stdout);
-      else rejectPromise(new Error(`Chromium exited with ${code}: ${stderr.slice(-4000)}`));
+      if (code === 0) finish(resolvePromise, stdout);
+      else finish(rejectPromise, new Error(`Chromium exited with ${code}: ${stderr.slice(-4000)}`));
     });
   });
 
-  for (const marker of ['data-pb-e2e="pass"', 'data-pb-e2e-main="true"', 'data-pb-e2e-frame="true"']) {
+  for (const marker of ['data-pb-e2e="pass"', 'data-pb-e2e-main="true"', 'data-pb-e2e-frame="true"', 'data-pb-e2e-shadow="true"']) {
     if (!output.includes(marker)) throw new Error(`browser smoke failed: missing ${marker}`);
   }
-  console.log('browser smoke OK: MV3 injection works in top frame and same-origin iframe');
+  console.log('browser smoke OK: MV3 injection works in top frame, same-origin iframe and open Shadow DOM');
 } finally {
   server.close();
 }
