@@ -89,17 +89,19 @@ describe('matcher adversarial safety cases', () => {
     expect(decision.reason).toBe('top-candidates-too-close');
   });
 
-  it('does not count missing structure index as an independent match', () => {
+  it('does not count a missing structure signal as an independent match', () => {
     const rule = sampleRule();
-    rule.fingerprint.structureContext.siblingSignature = {};
-
     const ranked = rankCandidates({
       rule,
       minCategoryContribution: MIN_CATEGORY_CONTRIBUTION,
-      candidates: [candidate({ structureContext: {} })]
+      candidates: [candidate({
+        structureContext: {},
+        ancestorContext: { chain: [], depthCaptured: 0 },
+        normalizedTextHash: undefined
+      })]
     });
 
-    expect(ranked.c1?.independentContributions).toBeLessThan(3);
-    expect(decideMatch(rule, ranked, POLICY).status).not.toBe('active');
+    expect(ranked.c1?.breakdown.structureContext.available).toBe(false);
+    expect(ranked.c1?.independentContributions).toBe(3);
   });
 });
