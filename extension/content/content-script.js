@@ -10,6 +10,7 @@
   const HIGHLIGHT = 'pb-selection-highlight';
   const MAX_CANDIDATES = 1000;
   const RETRY_DELAYS = [25, 75, 150, 300, 600];
+  const INTEGRITY_ATTRS = ['class', 'style', 'id', 'hidden'];
   const WEIGHTS = { stableId: .26, semanticAttributes: .22, textHash: .14, stableClasses: .12, ancestorContext: .10, structureContext: .08, cssSelector: .04, geometry: .02, tagName: .02 };
   const INDEPENDENT = ['stableId', 'semanticAttributes', 'textHash', 'stableClasses', 'ancestorContext', 'structureContext'];
   const EFFECT_CLASSES = ['pb-effect-base', 'pb-effect-blur', 'pb-effect-strongBlur', 'pb-effect-pixelate', 'pb-effect-blackout', 'pb-effect-hide'];
@@ -160,7 +161,7 @@
     let parent = el.parentElement, ancestor = 0, depth = 0;
     for (const expected of fp.ancestorContext?.chain || []) {
       if (!parent || depth++ >= 4) break;
-      if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableTokens(String(parent.className || '').split(/\s+/)).includes(c))) ancestor += 1;
+      if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableTokens(String(parent.className || '').split(/\s+/).includes(c)))) ancestor += 1;
       parent = parent.parentElement;
     }
     ancestor = fp.ancestorContext?.chain?.length ? ancestor / fp.ancestorContext.chain.length : 0;
@@ -263,6 +264,36 @@
     queryAll(`[${ATTR}]`).forEach(removeElement);
   }
 
+  function effectIsIntact(el, rule) {
+    if (!(el instanceof Element) || !el.isConnected) return false;
+    return el.getAttribute(ATTR) === rule.ruleId && el.classList.contains('pb-effect-base') && el.classList.contains(`pb-effect-${rule.effect}`);
+  }
+  let integrityFrame = 0;
+  let integrityQueued = false;
+  async function checkAppliedIntegrity() {
+    integrityFrame = 0;
+    integrityQueued = false;
+    if (!(await getSettings()).extensionEnabled || !applied.size) return;
+    const rules = await getRules();
+    const byId = new Map(rules.map(r => [r.ruleId, r]));
+    const missing = [];
+    for (const [id, el] of applied) {
+      const rule = byId.get(id);
+      if (!rule || pageSuppressed.has(id)) continue;
+      if (!effectIsIntact(el, rule)) missing.push([el, rule]);
+    }
+    for (const [el, rule] of missing) {
+      if (el.isConnected) apply(el, rule);
+      else queueEvaluate(0);
+    }
+  }
+  function queueIntegrityCheck() {
+    if (integrityQueued) return;
+    integrityQueued = true;
+    if (typeof requestAnimationFrame === 'function') integrityFrame = requestAnimationFrame(checkAppliedIntegrity);
+    else integrityFrame = setTimeout(checkAppliedIntegrity, 0);
+  }
+
   let selection = false, hover = null, retryTimer = null, evaluating = false, evaluateQueued = false;
   const retryCounts = new Map(), pageSuppressed = new Set();
   function stopSelection() {
@@ -343,14 +374,25 @@
   const observedRoots = new WeakSet();
   function observeRoot(root) {
     if (!root || observedRoots.has(root)) return;
-    const observer = new MutationObserver(() => {
-      collectShadowRoots(); observeAllRoots();
-      if (!evaluating) queueEvaluate(20); else evaluateQueued = true;
+    const observer = new MutationObserver(mutations => {
+      let added = false;
+      let integrity = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length) added = true;
+        if (mutation.type === 'attributes' && mutation.target instanceof Element && applied.has(mutation.target)) integrity = true;
+      }
+      if (integrity) queueIntegrityCheck();
+      if (added) {
+        collectShadowRoots(); observeAllRoots();
+        if (!evaluating) queueEvaluate(20); else evaluateQueued = true;
+      }
     });
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: INTEGRITY_ATTRS });
     observedRoots.add(root);
   }
   function observeAllRoots() { if (document.documentElement) observeRoot(document.documentElement); for (const root of shadowRoots) observeRoot(root); }
+
+  addEventListener('scroll', queueIntegrityCheck, { capture: true, passive: true });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
@@ -393,6 +435,7 @@
     }
   });
 
+  installSpaHooks();
   collectShadowRoots(); observeAllRoots();
   evaluateAll();
 })();
