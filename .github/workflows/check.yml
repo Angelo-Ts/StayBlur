@@ -24,6 +24,21 @@ jobs:
         with:
           node-version: 22
       - name: Install Chromium
-        run: sudo apt-get update && sudo apt-get install -y chromium
+        run: |
+          echo '=== Chromium installation ==='
+          sudo apt-get update
+          sudo apt-get install -y chromium
+          echo '=== Chromium binary ==='
+          command -v chromium || command -v chromium-browser
+          chromium --version || chromium-browser --version
       - name: Run browser smoke
-        run: node scripts/browser-smoke.mjs
+        run: |
+          echo '=== Browser smoke: starting ==='
+          echo "Runner: $(uname -a)"
+          echo "Node: $(node --version)"
+          echo "Working directory: $PWD"
+          echo '=== Extension files ==='
+          find extension -maxdepth 2 -type f | sort
+          echo '=== Launching Chromium smoke test ==='
+          node scripts/browser-smoke.mjs
+          echo '=== Browser smoke: finished ==='
