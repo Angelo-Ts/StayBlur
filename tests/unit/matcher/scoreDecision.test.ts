@@ -6,6 +6,12 @@ import type { CandidateSnapshot } from '../../../src/core/matcher/scoringTypes.j
 import { sampleRule } from '../helpers/sampleRule.js';
 
 const MIN_CATEGORY_CONTRIBUTION = 0.65;
+const POLICY = {
+  autoApplyThreshold: 0.85,
+  ambiguousThreshold: 0.6,
+  topGapAmbiguousDelta: 0.05,
+  minIndependentCategories: 3
+};
 
 describe('score + decision engine', () => {
   it('auto-applies only for score >= 0.85 with >=3 independent categories and safe top gap', () => {
@@ -42,12 +48,7 @@ describe('score + decision engine', () => {
       ]
     });
 
-    const decision = decideMatch(rule, ranked, {
-      autoApplyThreshold: 0.85,
-      ambiguousThreshold: 0.6,
-      topGapAmbiguousDelta: 0.05,
-      minIndependentCategories: 3
-    });
+    const decision = decideMatch(rule, ranked, POLICY);
 
     expect(ranked.c1?.independentContributions).toBeGreaterThanOrEqual(3);
     expect(decision.status).toBe('active');
@@ -91,17 +92,53 @@ describe('score + decision engine', () => {
     ];
 
     const ranked = rankCandidates({ rule, candidates, minCategoryContribution: MIN_CATEGORY_CONTRIBUTION });
-
-    const decision = decideMatch(rule, ranked, {
-      autoApplyThreshold: 0.85,
-      ambiguousThreshold: 0.6,
-      topGapAmbiguousDelta: 0.05,
-      minIndependentCategories: 3
-    });
+    const decision = decideMatch(rule, ranked, POLICY);
 
     expect(Math.abs((ranked.c1?.totalScore ?? 0) - (ranked.c2?.totalScore ?? 0))).toBeLessThanOrEqual(0.05);
     expect(decision.status).toBe('ambiguous');
     expect(decision.reason).toBe('top-candidates-too-close');
+  });
+
+  it('does not auto-apply a high score when fewer than 3 independent categories support it', () => {
+    const rule = sampleRule();
+    const ranked = {
+      sorted: [{ candidateId: 'a', totalScore: 0.95, independentContributions: 2, breakdown: {} as never }],
+      c1: { candidateId: 'a', totalScore: 0.95, independentContributions: 2, breakdown: {} as never },
+      c2: undefined
+    };
+
+    const decision = decideMatch(rule, ranked, POLICY);
+
+    expect(decision.status).toBe('ambiguous');
+    expect(decision.reason).toBe('insufficient-independent-categories');
+  });
+
+  it('treats a score below the ambiguous threshold as not found', () => {
+    const rule = sampleRule();
+    const ranked = {
+      sorted: [{ candidateId: 'a', totalScore: 0.59, independentContributions: 3, breakdown: {} as never }],
+      c1: { candidateId: 'a', totalScore: 0.59, independentContributions: 3, breakdown: {} as never },
+      c2: undefined
+    };
+
+    const decision = decideMatch(rule, ranked, POLICY);
+
+    expect(decision.status).toBe('notFound');
+    expect(decision.reason).toBe('below-ambiguous-threshold');
+  });
+
+  it('keeps candidates between thresholds ambiguous', () => {
+    const rule = sampleRule();
+    const ranked = {
+      sorted: [{ candidateId: 'a', totalScore: 0.72, independentContributions: 3, breakdown: {} as never }],
+      c1: { candidateId: 'a', totalScore: 0.72, independentContributions: 3, breakdown: {} as never },
+      c2: undefined
+    };
+
+    const decision = decideMatch(rule, ranked, POLICY);
+
+    expect(decision.status).toBe('ambiguous');
+    expect(decision.reason).toBe('between-thresholds');
   });
 
   it('renormalizes over available categories when others are unavailable', () => {
@@ -125,12 +162,7 @@ describe('score + decision engine', () => {
     expect(ranked.c1).toBeDefined();
     expect(ranked.c1?.totalScore).toBeGreaterThan(0);
 
-    const decision = decideMatch(rule, ranked, {
-      autoApplyThreshold: 0.85,
-      ambiguousThreshold: 0.6,
-      topGapAmbiguousDelta: 0.05,
-      minIndependentCategories: 3
-    });
+    const decision = decideMatch(rule, ranked, POLICY);
 
     expect(decision.status === 'ambiguous' || decision.status === 'notFound').toBe(true);
   });
@@ -145,12 +177,7 @@ describe('score + decision engine', () => {
       candidates: []
     });
 
-    const decision = decideMatch(rule, ranked, {
-      autoApplyThreshold: 0.85,
-      ambiguousThreshold: 0.6,
-      topGapAmbiguousDelta: 0.05,
-      minIndependentCategories: 3
-    });
+    const decision = decideMatch(rule, ranked, POLICY);
 
     expect(decision.status).toBe('disabled');
   });
