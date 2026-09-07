@@ -78,8 +78,11 @@
   async function saveSelectionPreferences() {
     const effect = $('effect').value;
     const intensity = Math.max(0, Math.min(100, Number($('intensity').value) || 0));
+    const stored = await chrome.storage.local.get({ 'pb:settings': { extensionEnabled: $('enabled').checked } });
+    const current = stored['pb:settings'] || {};
     await chrome.storage.local.set({
       'pb:settings': {
+        ...current,
         extensionEnabled: $('enabled').checked,
         selectionEffect: effect,
         selectionIntensity: intensity
