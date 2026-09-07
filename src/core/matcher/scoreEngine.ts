@@ -14,18 +14,11 @@ const WEIGHTS: Record<Category, number> = {
   tagName: 0.02
 };
 
-const TOTAL_WEIGHT = Object.values(WEIGHTS).reduce((sum, weight) => sum + weight, 0);
-
 const clip01 = (value: number): number => Math.min(1, Math.max(0, value));
-
-const safeDivide = (numerator: number, denominator: number): number =>
-  denominator === 0 ? 0 : numerator / denominator;
+const safeDivide = (numerator: number, denominator: number): number => denominator === 0 ? 0 : numerator / denominator;
 
 const jaccard = (a: string[], b: string[]): number => {
-  if (a.length === 0 || b.length === 0) {
-    return 0;
-  }
-
+  if (a.length === 0 || b.length === 0) return 0;
   const as = new Set(a);
   const bs = new Set(b);
   const intersection = [...as].filter((value) => bs.has(value)).length;
@@ -95,9 +88,7 @@ const scoreStructureContext = (fingerprint: Fingerprint, candidate: CandidateSna
   if (fpSibling && candidateSibling) {
     if (fpSibling.previousTag) checks.push(fpSibling.previousTag === candidateSibling.previousTag ? 1 : 0);
     if (fpSibling.nextTag) checks.push(fpSibling.nextTag === candidateSibling.nextTag ? 1 : 0);
-    if (typeof fpSibling.indexWithinStableParent === 'number' && typeof candidateSibling.indexWithinStableParent === 'number') {
-      checks.push(fpSibling.indexWithinStableParent === candidateSibling.indexWithinStableParent ? 1 : 0);
-    }
+    if (typeof fpSibling.indexWithinStableParent === 'number' && typeof candidateSibling.indexWithinStableParent === 'number') checks.push(fpSibling.indexWithinStableParent === candidateSibling.indexWithinStableParent ? 1 : 0);
   }
   if (fpChild && candidateChild) {
     checks.push(jaccard(fpChild.stableChildTagsTopK, candidateChild.stableChildTagsTopK));
@@ -136,14 +127,14 @@ export const scoreCandidate = (
   };
 
   let weightedScoreSum = 0;
+  let availableWeightSum = 0;
   for (const [category, result] of Object.entries(breakdown) as Array<[Category, { score: number; available: boolean }]>) {
-    if (result.available) weightedScoreSum += WEIGHTS[category] * result.score;
+    if (!result.available) continue;
+    weightedScoreSum += WEIGHTS[category] * result.score;
+    availableWeightSum += WEIGHTS[category];
   }
 
-  // Missing signals contribute zero; confidence must never increase merely because
-  // the fingerprint has fewer available categories.
-  const totalScore = clip01(safeDivide(weightedScoreSum, TOTAL_WEIGHT));
-
+  const totalScore = availableWeightSum > 0 ? clip01(weightedScoreSum / availableWeightSum) : 0;
   const independentContributions = INDEPENDENT_CATEGORIES.filter((category) => {
     const signal = breakdown[category];
     return signal.available && signal.score >= minCategoryContribution;
