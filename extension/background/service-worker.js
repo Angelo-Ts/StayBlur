@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const SETTINGS_KEY = 'pb:settings';
-  const CONTENT_SCRIPTS = ['content/selection-refiner.js', 'content/content-script.js'];
+  const CONTENT_SCRIPTS = ['content/content-script.js'];
 
   const map = {
     POPUP_GET_STATE: 'CONTENT_GET_STATE',
