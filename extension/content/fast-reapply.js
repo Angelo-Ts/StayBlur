@@ -88,6 +88,9 @@
     tracked.delete(ruleId);
     try { document.querySelectorAll(`[${ATTR}=\"${CSS.escape(ruleId)}\"]`).forEach(removeEffect); } catch (_) {}
   }
+  function removeTrackedEffects() {
+    for (const id of [...tracked.keys()]) removeRuleEffect(id);
+  }
   function apply(el, rule) {
     if (!(el instanceof Element) || !enabled || pageSuppressed.has(rule.ruleId)) return;
     ensureStyle();
@@ -220,6 +223,7 @@
     visibilityObserver = new IntersectionObserver(entries => { if (!enabled) return; for (const entry of entries) { if (!entry.isIntersecting) continue; const el = entry.target; const rule = rules.find(r => tracked.get(r.ruleId) === el); if (rule && !pageSuppressed.has(rule.ruleId) && el.isConnected && !hasEffect(rule, el)) apply(el, rule); } }, { root: null, rootMargin: '200px 0px' });
   }
   function refresh() {
+    removeTrackedEffects();
     loadedKey = ''; rules = []; tracked.clear(); pendingNodes.clear();
     getRules().then(current => { if (enabled && current.length) schedule([document.documentElement]); });
   }
