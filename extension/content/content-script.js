@@ -255,8 +255,6 @@
     return { status: 'active', confidence: a.totalScore, selected: a };
   }
 
-  const shadowRoots = new Set();
-  function findShadowRootTargets() { return shadowRoots; }
   let styleReady = false;
   function ensureStyle() {
     if (styleReady || document.getElementById(STYLE_ID)) { styleReady = true; return; }
@@ -363,6 +361,8 @@
   }
   function onKey(e) { if (e.key === 'Escape') stopSelection(); }
   function startSelection() { stopSelection(); selection = true; document.addEventListener('mousemove', onMove, true); document.addEventListener('click', onClick, true); document.addEventListener('keydown', onKey, true); }
+  globalThis.__progettoBlurStartSelection = startSelection;
+  globalThis.__progettoBlurStopSelection = stopSelection;
 
   async function persistStatus(rule, result) {
     if (rule.status === result.status && Math.abs(Number(rule.lastConfidence || 0) - Number(result.confidence || 0)) < .01) return;
