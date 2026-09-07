@@ -9,6 +9,7 @@
   const HIGHLIGHT = 'pb-selection-refined-highlight';
   const UI_SELECTOR = '[data-progettoblur-ui="true"]';
   const OWN_STYLE_ID = 'pb-selection-refiner-style';
+  const PIXELATE_FILTER_ID = 'pb-progettoblur-pixelate-filter';
   const MEDIA = new Set(['IMG', 'VIDEO', 'AUDIO', 'CANVAS', 'SVG', 'IFRAME']);
   const CONTROLS = new Set(['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'A', 'SUMMARY']);
   const SEMANTIC = new Set(['ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DD', 'DL', 'DT', 'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'UL']);
@@ -17,11 +18,47 @@
   const SETTINGS_KEY = 'pb:settings';
 
   function ensureStyle() {
-    if (document.getElementById(OWN_STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = OWN_STYLE_ID;
-    style.textContent = `.${HIGHLIGHT}{outline:2px solid #00a3ff!important;outline-offset:1px!important;cursor:crosshair!important}`;
-    (document.head || document.documentElement).appendChild(style);
+    if (!document.getElementById(OWN_STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = OWN_STYLE_ID;
+      style.textContent = `.${HIGHLIGHT}{outline:2px solid #00a3ff!important;outline-offset:1px!important;cursor:crosshair!important}.pb-effect-pixelate{filter:url("#${PIXELATE_FILTER_ID}") contrast(var(--pb-pixel-contrast,1.8)) saturate(.8)!important}`;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    if (!document.getElementById(PIXELATE_FILTER_ID)) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '0');
+      svg.setAttribute('height', '0');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.style.position = 'absolute';
+      svg.style.width = '0';
+      svg.style.height = '0';
+      svg.style.overflow = 'hidden';
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+      filter.id = PIXELATE_FILTER_ID;
+      filter.setAttribute('x', '-10%');
+      filter.setAttribute('y', '-10%');
+      filter.setAttribute('width', '120%');
+      filter.setAttribute('height', '120%');
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      const noise = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
+      noise.setAttribute('type', 'fractalNoise');
+      noise.setAttribute('baseFrequency', '0.12');
+      noise.setAttribute('numOctaves', '1');
+      noise.setAttribute('seed', '17');
+      noise.setAttribute('result', 'pbNoise');
+      const displacement = document.createElementNS('http://www.w3.org/2000/svg', 'feDisplacementMap');
+      displacement.setAttribute('in', 'SourceGraphic');
+      displacement.setAttribute('in2', 'pbNoise');
+      displacement.setAttribute('scale', '10');
+      displacement.setAttribute('xChannelSelector', 'R');
+      displacement.setAttribute('yChannelSelector', 'G');
+      filter.append(noise, displacement);
+      defs.appendChild(filter);
+      svg.appendChild(defs);
+      (document.body || document.documentElement).appendChild(svg);
+    }
   }
 
   function valid(el) {
@@ -103,6 +140,8 @@
     const px = preferences.intensity;
     target.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     target.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
+    target.style.setProperty('--pb-pixel-contrast', `${1.25 + px / 100 * 1.75}`);
+    ensureStyle();
   }
 
   function onMove(event) {
