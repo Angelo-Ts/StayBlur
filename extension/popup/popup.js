@@ -75,10 +75,26 @@
     }
   }
 
+  async function saveSelectionPreferences() {
+    const effect = $('effect').value;
+    const intensity = Math.max(0, Math.min(100, Number($('intensity').value) || 0));
+    await chrome.storage.local.set({
+      'pb:settings': {
+        extensionEnabled: $('enabled').checked,
+        selectionEffect: effect,
+        selectionIntensity: intensity
+      }
+    });
+    $('intensityValue').textContent = `${intensity}%`;
+  }
+
   async function refresh() {
     const r = await send('POPUP_GET_STATE');
     if (!r?.ok) return status(r?.error || 'Impossibile leggere lo stato della pagina.');
     $('enabled').checked = r.extensionEnabled !== false;
+    $('effect').value = r.selectionEffect || 'blur';
+    $('intensity').value = String(r.selectionIntensity ?? 60);
+    $('intensityValue').textContent = `${$('intensity').value}%`;
     renderRules(r.rules);
   }
 
@@ -86,9 +102,13 @@
   $('enabled').onchange = async e => {
     const r = await send('POPUP_SET_EXTENSION_ENABLED', { enabled: e.target.checked });
     if (!r?.ok) status(r?.error || 'Impossibile modificare lo stato.');
-    else { status(e.target.checked ? 'Estensione attivata.' : 'Estensione disattivata.'); await refresh(); }
+    else { await saveSelectionPreferences(); status(e.target.checked ? 'Estensione attivata.' : 'Estensione disattivata.'); await refresh(); }
   };
+  $('effect').onchange = async () => { await saveSelectionPreferences(); status('Effetto salvato per la prossima selezione.'); };
+  $('intensity').oninput = () => { $('intensityValue').textContent = `${$('intensity').value}%`; };
+  $('intensity').onchange = async () => { await saveSelectionPreferences(); status('Intensità salvata per la prossima selezione.'); };
   $('select').onclick = async () => {
+    await saveSelectionPreferences();
     const r = await send('POPUP_START_SELECTION');
     if (r?.ok) status('Selezione attiva: passa sulla pagina e clicca l’elemento da oscurare. Premi Esc per annullare.');
     else status(r?.error || 'Impossibile avviare la selezione.');
