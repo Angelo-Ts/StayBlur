@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const SETTINGS_KEY = 'pb:settings';
-  const CONTENT_SCRIPTS = ['content/fast-reapply.js', 'content/selection-refiner.js', 'content/content-script.js'];
+  const CONTENT_SCRIPTS = ['content/selection-refiner.js', 'content/content-script.js'];
 
   const map = {
     POPUP_GET_STATE: 'CONTENT_GET_STATE',
@@ -27,7 +27,7 @@
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (firstError) {
       try {
-        await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_SCRIPTS });
+        await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS });
         return await chrome.tabs.sendMessage(tabId, message);
       } catch (injectError) {
         const text = String(injectError?.message || firstError?.message || injectError);
