@@ -19,8 +19,10 @@
   let loadedKey = '';
   let loadPromise = null;
   let observer = null;
+  let visibilityObserver = null;
   let pendingNodes = new Set();
   let flushTimer = 0;
+  const tracked = new Map();
 
   const context = () => ({ domain: location.hostname, path: location.pathname || '/' });
   const contextKey = () => `${location.hostname}|${location.pathname || '/'}`;
@@ -80,6 +82,12 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
+  function track(el, rule) {
+    tracked.set(rule.ruleId, el);
+    if (!visibilityObserver) return;
+    try { visibilityObserver.observe(el); } catch (_) {}
+  }
+
   function apply(el, rule) {
     if (!(el instanceof Element) || !enabled) return;
     ensureStyle();
@@ -89,6 +97,7 @@
     el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
     el.setAttribute(ATTR, rule.ruleId);
+    track(el, rule);
   }
 
   function candidateNodes(root) {
@@ -175,7 +184,8 @@
     // Process every rule against only the newly created subtree. This keeps
     // scrolling/virtualization fast even on very large pages.
     await Promise.all(currentRules.map(async rule => {
-      if (document.querySelector(`[${ATTR}="${CSS.escape(rule.ruleId)}"]`)) return;
+      const trackedEl = tracked.get(rule.ruleId);
+      if (trackedEl?.isConnected && trackedEl.getAttribute(ATTR) === rule.ruleId) return;
       const el = await findFast(rule, nodes);
       if (el) apply(el, rule);
     }));
@@ -205,9 +215,24 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
+  function observeVisibility() {
+    if (visibilityObserver || typeof IntersectionObserver !== 'function') return;
+    visibilityObserver = new IntersectionObserver(entries => {
+      if (!enabled) return;
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        const ruleId = el.getAttribute(ATTR);
+        const rule = ruleId && rules.find(r => r.ruleId === ruleId);
+        if (rule && el.isConnected && el.getAttribute(ATTR) !== rule.ruleId) apply(el, rule);
+      }
+    }, { root: null, rootMargin: '200px 0px' });
+  }
+
   function refresh() {
     loadedKey = '';
     rules = [];
+    tracked.clear();
     pendingNodes.clear();
     getRules().then(current => {
       if (enabled && current.length) schedule([document.documentElement]);
@@ -238,6 +263,7 @@
     history[name] = wrapped;
   }
 
+  observeVisibility();
   getRules().then(current => {
     if (enabled && current.length) schedule([document.documentElement]);
     observe();
