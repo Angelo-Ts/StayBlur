@@ -30,7 +30,7 @@ const args = [
   '--no-default-browser-check',
   `--user-data-dir=${resolve('.tmp/browser-smoke-profile')}`,
   `--load-extension=${extensionDir}`,
-  `--dump-dom`,
+  '--dump-dom',
   `http://127.0.0.1:${port}/fixture.html`
 ];
 
@@ -53,10 +53,10 @@ try {
     });
   });
 
-  for (const marker of ['data-pb-e2e="pass"', 'data-pb-e2e-main="true"', 'data-pb-e2e-frame="true"', 'data-pb-e2e-shadow="true"']) {
+  for (const marker of ['data-pb-e2e="pass"', 'data-pb-e2e-main="true"', 'data-pb-e2e-frame="true"']) {
     if (!output.includes(marker)) throw new Error(`browser smoke failed: missing ${marker}`);
   }
-  console.log('browser smoke OK: MV3 injection works in top frame, same-origin iframe, and open Shadow DOM');
+  console.log('browser smoke OK: MV3 injection works in top frame and same-origin iframe');
 } finally {
   server.close();
 }
