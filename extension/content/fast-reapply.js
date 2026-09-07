@@ -106,12 +106,68 @@
     const current = new Set(stableTokens(String(el.className || '').split(/\s+/)));
     return expected.some(x => current.has(x));
   }
+  async function semanticMatchCount(fp, el) {
+    const expected = (fp?.semanticAttributes || []);
+    if (!expected.length) return 0;
+    let matches = 0;
+    for (const attr of expected) {
+      if (attr.valueKind === 'structural') {
+        if (el.getAttribute(attr.name)?.toLowerCase() === String(attr.value).toLowerCase()) matches += 1;
+      } else if (attr.name) {
+        const value = el.getAttribute(attr.name);
+        if (value && await sha256(value.toLowerCase()) === attr.value) matches += 1;
+      }
+    }
+    return matches;
+  }
+  async function textMatches(fp, el) {
+    if (!fp?.normalizedTextHash) return false;
+    const text = normalizeText(el.textContent);
+    if (volatileText(text)) return false;
+    return await sha256(text) === fp.normalizedTextHash.hash;
+  }
+  function structureMatches(fp, el) {
+    const sibling = fp?.structureContext?.siblingSignature;
+    if (!sibling || !el.parentElement) return false;
+    const children = [...el.parentElement.children];
+    const index = children.indexOf(el);
+    if (typeof sibling.indexWithinStableParent === 'number' && sibling.indexWithinStableParent !== index) return false;
+    if (sibling.previousTag && (index <= 0 || children[index - 1].tagName.toLowerCase() !== sibling.previousTag)) return false;
+    if (sibling.nextTag && (index < 0 || index >= children.length - 1 || children[index + 1].tagName.toLowerCase() !== sibling.nextTag)) return false;
+    return true;
+  }
+  function ancestorMatches(fp, el) {
+    const chain = fp?.ancestorContext?.chain || [];
+    if (!chain.length) return false;
+    let parent = el.parentElement;
+    let matched = 0;
+    for (const expected of chain.slice(0, 2)) {
+      if (!parent) break;
+      if (parent.tagName.toLowerCase() === expected.tag) {
+        const current = new Set(stableTokens(String(parent.className || '').split(/\s+/)));
+        const expectedClasses = expected.stableClasses || [];
+        if (!expectedClasses.length || expectedClasses.some(c => current.has(c))) matched += 1;
+      }
+      parent = parent.parentElement;
+    }
+    return matched > 0;
+  }
+  async function independentSignals(fp, el) {
+    let count = 0;
+    if (fp?.stableId?.value && el.id === fp.stableId.value) count += 1;
+    if (await semanticMatchCount(fp, el) > 0) count += 1;
+    if (await textMatches(fp, el)) count += 1;
+    if (classMatch(fp, el) && (fp?.stableClasses?.length || 0) > 0) count += 1;
+    if (ancestorMatches(fp, el)) count += 1;
+    if (structureMatches(fp, el)) count += 1;
+    return count;
+  }
   async function safeExact(fp, el) {
     if (!(el instanceof Element) || el.tagName.toLowerCase() !== fp?.tagName) return false;
     if (fp.stableId?.value && el.id !== fp.stableId.value) return false;
     if (!classMatch(fp, el)) return false;
-    if (fp.normalizedTextHash) { const text = normalizeText(el.textContent); if (volatileText(text)) return false; return await sha256(text) === fp.normalizedTextHash.hash; }
-    return true;
+    if (fp.normalizedTextHash && !(await textMatches(fp, el))) return false;
+    return (await independentSignals(fp, el)) >= 3;
   }
   async function findFast(rule, nodes) {
     const fp = rule.fingerprint; if (!fp) return null;
@@ -126,7 +182,13 @@
     }
     if (fp.normalizedTextHash) {
       let found = null;
-      for (const node of nodes) { const text = normalizeText(node.textContent); if (!volatileText(text) && await sha256(text) === fp.normalizedTextHash.hash && await safeExact(fp, node)) { if (found && found !== node) return null; found = node; } }
+      for (const node of nodes) {
+        const text = normalizeText(node.textContent);
+        if (!volatileText(text) && await sha256(text) === fp.normalizedTextHash.hash && await safeExact(fp, node)) {
+          if (found && found !== node) return null;
+          found = node;
+        }
+      }
       if (found) return found;
     }
     return null;
