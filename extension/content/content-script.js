@@ -9,32 +9,53 @@
   const STYLE_ID = 'pb-rule-style';
   const HIGHLIGHT = 'pb-selection-highlight';
   const MAX_CANDIDATES = 1000;
-  const RETRY_MS = 150;
-  const MAX_RETRIES = 8;
+  const RETRY_DELAYS = [25, 75, 150, 300, 600];
   const WEIGHTS = { stableId: .26, semanticAttributes: .22, textHash: .14, stableClasses: .12, ancestorContext: .10, structureContext: .08, cssSelector: .04, geometry: .02, tagName: .02 };
   const INDEPENDENT = ['stableId', 'semanticAttributes', 'textHash', 'stableClasses', 'ancestorContext', 'structureContext'];
+  const EFFECT_CLASSES = ['pb-effect-base', 'pb-effect-blur', 'pb-effect-strongBlur', 'pb-effect-pixelate', 'pb-effect-blackout', 'pb-effect-hide'];
 
   const keyRule = id => `${RULE_PREFIX}${id}`;
   const keyDomain = d => `${DOMAIN_PREFIX}${d}`;
   const keyPage = (d, p) => `${PAGE_PREFIX}${d}:${p}`;
   const context = () => ({ domain: location.hostname, path: location.pathname || '/' });
+  const contextKey = () => `${location.hostname}|${location.pathname || '/'}`;
+
+  let settingsCache = { extensionEnabled: true };
+  let settingsReady = false;
+  let rulesCache = null;
+  let rulesCacheContext = '';
+  let rulesLoad = null;
 
   async function getSettings() {
+    if (settingsReady) return settingsCache;
     const r = await chrome.storage.local.get({ [SETTINGS_KEY]: { extensionEnabled: true } });
-    return { extensionEnabled: true, ...(r[SETTINGS_KEY] || {}) };
+    settingsCache = { extensionEnabled: true, ...(r[SETTINGS_KEY] || {}) };
+    settingsReady = true;
+    return settingsCache;
   }
   async function getRule(id) {
     const r = await chrome.storage.local.get({ [keyRule(id)]: undefined });
     return r[keyRule(id)];
   }
   async function getRules() {
-    const c = context();
-    const r = await chrome.storage.local.get({ [keyDomain(c.domain)]: [], [keyPage(c.domain, c.path)]: [] });
-    const ids = [...new Set([...(r[keyDomain(c.domain)] || []), ...(r[keyPage(c.domain, c.path)] || [])])];
-    if (!ids.length) return [];
-    const loaded = await chrome.storage.local.get(ids.map(keyRule));
-    return ids.map(id => loaded[keyRule(id)]).filter(Boolean);
+    const ck = contextKey();
+    if (rulesCache && rulesCacheContext === ck) return rulesCache;
+    if (rulesLoad && rulesLoad.context === ck) return rulesLoad.promise;
+    const promise = (async () => {
+      const c = context();
+      const r = await chrome.storage.local.get({ [keyDomain(c.domain)]: [], [keyPage(c.domain, c.path)]: [] });
+      const ids = [...new Set([...(r[keyDomain(c.domain)] || []), ...(r[keyPage(c.domain, c.path)] || [])])];
+      if (!ids.length) return [];
+      const loaded = await chrome.storage.local.get(ids.map(keyRule));
+      return ids.map(id => loaded[keyRule(id)]).filter(Boolean);
+    })();
+    rulesLoad = { context: ck, promise };
+    const result = await promise;
+    if (rulesLoad?.promise === promise) rulesLoad = null;
+    if (contextKey() === ck) { rulesCache = result; rulesCacheContext = ck; }
+    return result;
   }
+  function invalidateRulesCache() { rulesCache = null; rulesCacheContext = ''; rulesLoad = null; }
   async function saveRule(rule) {
     const dKey = keyDomain(rule.domain), pKey = keyPage(rule.domain, rule.path || '/');
     const old = await chrome.storage.local.get({ [dKey]: [], [pKey]: [] });
@@ -43,9 +64,19 @@
       [dKey]: [...new Set([...(old[dKey] || []), rule.ruleId])],
       [pKey]: [...new Set([...(old[pKey] || []), rule.ruleId])]
     });
+    if (contextKey() === `${rule.domain}|${rule.path || '/'}`) {
+      const current = rulesCache || [];
+      rulesCache = [...current.filter(r => r.ruleId !== rule.ruleId), rule];
+      rulesCacheContext = contextKey();
+    }
     return rule;
   }
-  async function updateRule(rule) { return saveRule({ ...rule, updatedAt: new Date().toISOString() }); }
+  async function updateRule(rule) {
+    const updated = { ...rule, updatedAt: new Date().toISOString() };
+    await chrome.storage.local.set({ [keyRule(updated.ruleId)]: updated });
+    if (rulesCache && rulesCacheContext === contextKey()) rulesCache = rulesCache.map(r => r.ruleId === updated.ruleId ? updated : r);
+    return updated;
+  }
   async function deleteRule(id) {
     const rule = await getRule(id);
     if (!rule) return;
@@ -56,6 +87,7 @@
       [dKey]: (old[dKey] || []).filter(x => x !== id),
       [pKey]: (old[pKey] || []).filter(x => x !== id)
     });
+    if (rulesCache) rulesCache = rulesCache.filter(r => r.ruleId !== id);
   }
 
   const stableToken = value => value && !(
@@ -84,11 +116,6 @@
     }
     return out;
   }
-  function nthOfType(el) {
-    const p = el.parentElement;
-    if (!p) return 1;
-    return [...p.children].filter(x => x.tagName === el.tagName).indexOf(el) + 1;
-  }
   function cssPathFor(el) {
     const parts = [];
     let cur = el;
@@ -96,10 +123,7 @@
     while (cur instanceof Element && cur !== document.documentElement && depth++ < 8) {
       const tag = cur.tagName.toLowerCase();
       const id = stableToken(cur.id) ? cur.id : '';
-      if (id) {
-        parts.unshift(`#${CSS.escape(id)}`);
-        break;
-      }
+      if (id) { parts.unshift(`#${CSS.escape(id)}`); break; }
       const classes = stableTokens(String(cur.className || '').split(/\s+/).filter(Boolean)).slice(0, 2);
       let part = tag;
       if (classes.length) part += `.${classes.map(CSS.escape).join('.')}`;
@@ -110,38 +134,23 @@
     }
     return parts.join('>');
   }
-
   async function fingerprint(el) {
     const ids = stableTokens([el.id]);
     const classes = stableTokens(String(el.className || '').split(/\s+/).filter(Boolean));
     const attrs = await semanticAttrs(el);
     const text = normalizeText(el.textContent || '');
-    const fp = {
-      generationVersion: '1.5',
-      cssSelector: cssPathFor(el),
-      stableId: ids[0] ? { value: ids[0] } : undefined,
-      semanticAttributes: attrs,
-      stableClasses: classes.map(className => ({ className })),
-      tagName: el.tagName.toLowerCase()
-    };
+    const fp = { generationVersion: '1.5', cssSelector: cssPathFor(el), stableId: ids[0] ? { value: ids[0] } : undefined, semanticAttributes: attrs, stableClasses: classes.map(className => ({ className })), tagName: el.tagName.toLowerCase() };
     if (!volatileText(text)) fp.normalizedTextHash = { algorithm: 'SHA-256', hash: await sha256(text), stable: true };
     const chain = [];
     let p = el.parentElement, depth = 0;
-    while (p && depth++ < 4) {
-      chain.push({ tag: p.tagName.toLowerCase(), stableClasses: stableTokens(String(p.className || '').split(/\s+/).filter(Boolean)) });
-      p = p.parentElement;
-    }
+    while (p && depth++ < 4) { chain.push({ tag: p.tagName.toLowerCase(), stableClasses: stableTokens(String(p.className || '').split(/\s+/).filter(Boolean)) }); p = p.parentElement; }
     fp.ancestorContext = { chain, depthCaptured: chain.length };
     const parent = el.parentElement, siblings = parent ? [...parent.children] : [], i = siblings.indexOf(el);
-    fp.structureContext = {
-      siblingSignature: { previousTag: i > 0 ? siblings[i - 1].tagName.toLowerCase() : undefined, nextTag: i >= 0 && i < siblings.length - 1 ? siblings[i + 1].tagName.toLowerCase() : undefined, indexWithinStableParent: i },
-      childSignature: { stableChildTagsTopK: [...new Set([...el.children].slice(0, 5).map(x => x.tagName.toLowerCase()))].slice(0, 3) }
-    };
+    fp.structureContext = { siblingSignature: { previousTag: i > 0 ? siblings[i - 1].tagName.toLowerCase() : undefined, nextTag: i >= 0 && i < siblings.length - 1 ? siblings[i + 1].tagName.toLowerCase() : undefined, indexWithinStableParent: i }, childSignature: { stableChildTagsTopK: [...new Set([...el.children].slice(0, 5).map(x => x.tagName.toLowerCase()))].slice(0, 3) } };
     const r = el.getBoundingClientRect(), vw = Math.max(innerWidth, 1), vh = Math.max(innerHeight, 1);
     fp.geometricHint = { viewportXRatio: Math.max(0, Math.min(1, r.x / vw)), viewportYRatio: Math.max(0, Math.min(1, r.y / vh)), widthRatio: Math.max(0, Math.min(1, r.width / vw)), heightRatio: Math.max(0, Math.min(1, r.height / vh)) };
     return fp;
   }
-
   function eqAttrs(a, b) { return a.name === b.name && a.valueKind === b.valueKind && a.value === b.value; }
   async function score(fp, el, cssMatched) {
     const attrs = await semanticAttrs(el), id = fp.stableId && el.id === fp.stableId.value ? 1 : 0;
@@ -161,14 +170,7 @@
     const r = el.getBoundingClientRect(), g = fp.geometricHint;
     const geometry = g ? Math.max(0, 1 - (Math.abs(r.x / Math.max(innerWidth, 1) - g.viewportXRatio) + Math.abs(r.y / Math.max(innerHeight, 1) - g.viewportYRatio) + Math.abs(r.width / Math.max(innerWidth, 1) - g.widthRatio) + Math.abs(r.height / Math.max(innerHeight, 1) - g.heightRatio)) / 4) : 0;
     const tag = fp.tagName === el.tagName.toLowerCase() ? 1 : 0;
-    const parts = {
-      stableId: { score: id, available: !!fp.stableId },
-      semanticAttributes: { score: semantic, available: !!fp.semanticAttributes?.length },
-      textHash: { score: text, available: !!fp.normalizedTextHash },
-      stableClasses: { score: classes, available: !!fp.stableClasses?.length },
-      ancestorContext: { score: ancestor, available: !!fp.ancestorContext?.chain?.length },
-      structureContext: { score: structure, available: true }, cssSelector: { score: css, available: true }, geometry: { score: geometry, available: !!g }, tagName: { score: tag, available: true }
-    };
+    const parts = { stableId: { score: id, available: !!fp.stableId }, semanticAttributes: { score: semantic, available: !!fp.semanticAttributes?.length }, textHash: { score: text, available: !!fp.normalizedTextHash }, stableClasses: { score: classes, available: !!fp.stableClasses?.length }, ancestorContext: { score: ancestor, available: !!fp.ancestorContext?.chain?.length }, structureContext: { score: structure, available: true }, cssSelector: { score: css, available: true }, geometry: { score: geometry, available: !!g }, tagName: { score: tag, available: true } };
     let total = 0, available = 0;
     for (const [k, v] of Object.entries(parts)) if (v.available) { total += WEIGHTS[k] * v.score; available += WEIGHTS[k]; }
     const independent = INDEPENDENT.filter(k => parts[k].available && parts[k].score >= .65).length;
@@ -191,13 +193,13 @@
   async function exactSelectorSafe(fp, el) {
     if (!el || el.tagName.toLowerCase() !== fp.tagName) return false;
     if (fp.stableId?.value && el.id !== fp.stableId.value) return false;
+    if (fp.stableClasses?.length) {
+      const current = stableTokens(String(el.className || '').split(/\s+/));
+      if (!fp.stableClasses.some(x => current.includes(x.className))) return false;
+    }
     if (fp.normalizedTextHash) {
       if (volatileText(el.textContent)) return false;
       return await sha256(normalizeText(el.textContent)) === fp.normalizedTextHash.hash;
-    }
-    if (fp.stableClasses?.length) {
-      const current = stableTokens(String(el.className || '').split(/\s+/));
-      return fp.stableClasses.some(x => current.includes(x.className));
     }
     return true;
   }
@@ -221,6 +223,7 @@
   }
 
   const original = new WeakMap();
+  const applied = new Map();
   function ensureStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const s = document.createElement('style'); s.id = STYLE_ID;
@@ -228,41 +231,39 @@
     (document.head || document.documentElement).appendChild(s);
   }
   function apply(el, rule) {
+    if (!el) return;
     ensureStyle();
-    if (!original.has(el)) original.set(el, { className: el.className, blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') });
+    if (!original.has(el)) original.set(el, { blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') });
     const px = Math.max(0, Math.min(100, Number(rule.intensity ?? 60)));
     el.classList.add('pb-effect-base', `pb-effect-${rule.effect}`);
     el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
     el.setAttribute(ATTR, rule.ruleId);
+    applied.set(rule.ruleId, el);
+  }
+  function removeElement(el) {
+    if (!el) return;
+    EFFECT_CLASSES.forEach(c => el.classList.remove(c));
+    const o = original.get(el);
+    if (o) {
+      if (o.blur) el.style.setProperty('--pb-blur', o.blur); else el.style.removeProperty('--pb-blur');
+      if (o.strong) el.style.setProperty('--pb-strong-blur', o.strong); else el.style.removeProperty('--pb-strong-blur');
+      original.delete(el);
+    }
+    el.removeAttribute(ATTR);
   }
   function removeRule(id) {
-    queryAll(`[${ATTR}]`).forEach(el => {
-      if (el.getAttribute(ATTR) !== id) return;
-      const o = original.get(el);
-      ['pb-effect-base','pb-effect-blur','pb-effect-strongBlur','pb-effect-pixelate','pb-effect-blackout','pb-effect-hide'].forEach(c => el.classList.remove(c));
-      if (o) {
-        if (o.blur) el.style.setProperty('--pb-blur', o.blur); else el.style.removeProperty('--pb-blur');
-        if (o.strong) el.style.setProperty('--pb-strong-blur', o.strong); else el.style.removeProperty('--pb-strong-blur');
-        original.delete(el);
-      }
-      el.removeAttribute(ATTR);
-    });
+    const el = applied.get(id);
+    if (el) removeElement(el);
+    applied.delete(id);
+    if (!el) queryAll(`[${ATTR}="${CSS.escape(id)}"]`).forEach(removeElement);
   }
   function removeAll() {
-    queryAll(`[${ATTR}]`).forEach(el => {
-      const o = original.get(el);
-      ['pb-effect-base','pb-effect-blur','pb-effect-strongBlur','pb-effect-pixelate','pb-effect-blackout','pb-effect-hide'].forEach(c => el.classList.remove(c));
-      if (o) {
-        if (o.blur) el.style.setProperty('--pb-blur', o.blur); else el.style.removeProperty('--pb-blur');
-        if (o.strong) el.style.setProperty('--pb-strong-blur', o.strong); else el.style.removeProperty('--pb-strong-blur');
-        original.delete(el);
-      }
-      el.removeAttribute(ATTR);
-    });
+    applied.clear();
+    queryAll(`[${ATTR}]`).forEach(removeElement);
   }
 
-  let selection = false, hover = null, retryTimer = null, evaluating = false;
+  let selection = false, hover = null, retryTimer = null, evaluating = false, evaluateQueued = false;
   const retryCounts = new Map(), pageSuppressed = new Set();
   function stopSelection() {
     selection = false;
@@ -283,40 +284,71 @@
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); stopSelection();
     const c = context(), now = new Date().toISOString();
     const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, enabled: true, status: 'active', effect: 'blur', intensity: 60, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
-    await saveRule(rule); apply(t, rule);
+    await saveRule(rule); apply(t, rule); retryCounts.delete(rule.ruleId);
   }
   function onKey(e) { if (e.key === 'Escape') stopSelection(); }
   function startSelection() { stopSelection(); selection = true; document.addEventListener('mousemove', onMove, true); document.addEventListener('click', onClick, true); document.addEventListener('keydown', onKey, true); }
 
+  async function persistStatus(rule, result) {
+    if (rule.status === result.status && Math.abs(Number(rule.lastConfidence || 0) - Number(result.confidence || 0)) < .01) return;
+    const updated = { ...rule, status: result.status, lastConfidence: result.confidence, statusContext: { domain: context().domain, path: context().path, evaluatedAt: new Date().toISOString() }, lastMatchedAt: result.status === 'active' ? new Date().toISOString() : rule.lastMatchedAt };
+    await updateRule(updated);
+  }
   async function evaluateRule(rule) {
     if (!rule.enabled || !(await getSettings()).extensionEnabled) { removeRule(rule.ruleId); return { status: 'disabled', confidence: 0 }; }
     if (pageSuppressed.has(rule.ruleId)) { removeRule(rule.ruleId); return { status: 'suppressed', confidence: 0 }; }
-    const result = await match(rule.fingerprint); removeRule(rule.ruleId);
-    if (result.status === 'active' && result.selected?.element) apply(result.selected.element, rule);
-    await updateRule({ ...rule, status: result.status, lastConfidence: result.confidence, statusContext: { domain: context().domain, path: context().path, evaluatedAt: new Date().toISOString() }, lastMatchedAt: result.status === 'active' ? new Date().toISOString() : rule.lastMatchedAt });
+    const result = await match(rule.fingerprint);
+    if (result.status === 'active' && result.selected?.element) apply(result.selected.element, rule); else removeRule(rule.ruleId);
+    await persistStatus(rule, result);
     return result;
   }
   async function evaluateAll() {
-    if (evaluating) return; evaluating = true;
-    try { const rules = await getRules(), pending = []; for (const r of rules) { const result = await evaluateRule(r); if (r.enabled && !pageSuppressed.has(r.ruleId) && (result.status === 'notFound' || result.status === 'ambiguous')) pending.push(r.ruleId); } if (pending.length) schedule(pending); }
-    finally { evaluating = false; }
+    if (evaluating) { evaluateQueued = true; return; }
+    evaluating = true;
+    try {
+      const rules = await getRules();
+      const results = await Promise.all(rules.map(async r => ({ rule: r, result: await evaluateRule(r) })));
+      const pending = results.filter(x => x.rule.enabled && !pageSuppressed.has(x.rule.ruleId) && (x.result.status === 'notFound' || x.result.status === 'ambiguous')).map(x => x.rule.ruleId);
+      if (pending.length) scheduleRetries(pending);
+    } finally {
+      evaluating = false;
+      if (evaluateQueued) { evaluateQueued = false; queueEvaluate(0); }
+    }
   }
-  function schedule(ids) {
-    clearTimeout(retryTimer); retryTimer = setTimeout(async () => {
+  function scheduleRetries(ids) {
+    clearTimeout(retryTimer);
+    const attempt = Math.max(...ids.map(id => retryCounts.get(id) || 0));
+    if (attempt >= RETRY_DELAYS.length) return;
+    retryTimer = setTimeout(async () => {
       const next = [];
+      const rules = await getRules();
       for (const id of ids) {
-        if (pageSuppressed.has(id)) continue; const n = retryCounts.get(id) || 0; if (n >= MAX_RETRIES) continue; retryCounts.set(id, n + 1);
-        const r = await getRule(id); if (!r || !r.enabled) continue; const result = await evaluateRule(r); if (result.status !== 'active') next.push(id);
+        if (pageSuppressed.has(id)) continue;
+        const n = retryCounts.get(id) || 0;
+        if (n >= RETRY_DELAYS.length) continue;
+        retryCounts.set(id, n + 1);
+        const r = rules.find(rule => rule.ruleId === id);
+        if (!r || !r.enabled) continue;
+        const result = await evaluateRule(r);
+        if (result.status !== 'active') next.push(id);
       }
-      if (next.length) schedule(next);
-    }, RETRY_MS);
+      if (next.length) scheduleRetries(next);
+    }, RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]);
+  }
+  function queueEvaluate(delay = 20) {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(evaluateAll, delay);
   }
 
   const observedRoots = new WeakSet();
   function observeRoot(root) {
     if (!root || observedRoots.has(root)) return;
-    const observer = new MutationObserver(() => { collectShadowRoots(); observeAllRoots(); if (!evaluating) { clearTimeout(retryTimer); retryTimer = setTimeout(evaluateAll, RETRY_MS); } });
-    observer.observe(root, { childList: true, subtree: true, attributes: true }); observedRoots.add(root);
+    const observer = new MutationObserver(() => {
+      collectShadowRoots(); observeAllRoots();
+      if (!evaluating) queueEvaluate(20); else evaluateQueued = true;
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    observedRoots.add(root);
   }
   function observeAllRoots() { if (document.documentElement) observeRoot(document.documentElement); for (const root of shadowRoots) observeRoot(root); }
 
@@ -342,12 +374,25 @@
   function installSpaHooks() {
     for (const name of ['pushState', 'replaceState']) {
       const originalFn = history[name]; if (originalFn.__progettoBlurWrapped) continue;
-      const wrapped = function (...args) { const before = location.href; const result = originalFn.apply(this, args); if (location.href !== before) { retryCounts.clear(); pageSuppressed.clear(); clearTimeout(retryTimer); retryTimer = setTimeout(evaluateAll, RETRY_MS); } return result; };
+      const wrapped = function (...args) { const before = location.href; const result = originalFn.apply(this, args); if (location.href !== before) { retryCounts.clear(); pageSuppressed.clear(); invalidateRulesCache(); clearTimeout(retryTimer); evaluateAll(); } return result; };
       Object.defineProperty(wrapped, '__progettoBlurWrapped', { value: true }); history[name] = wrapped;
     }
-    addEventListener('popstate', () => { retryCounts.clear(); pageSuppressed.clear(); clearTimeout(retryTimer); retryTimer = setTimeout(evaluateAll, RETRY_MS); }, true);
+    addEventListener('popstate', () => { retryCounts.clear(); pageSuppressed.clear(); invalidateRulesCache(); clearTimeout(retryTimer); evaluateAll(); }, true);
   }
-  installSpaHooks(); collectShadowRoots(); observeAllRoots();
-  chrome.storage.onChanged.addListener(changes => { if (changes[SETTINGS_KEY] || Object.keys(changes).some(k => k.startsWith(RULE_PREFIX) || k.startsWith('idx:'))) { clearTimeout(retryTimer); retryTimer = setTimeout(evaluateAll, RETRY_MS); } });
+
+  chrome.storage.onChanged.addListener(changes => {
+    if (changes[SETTINGS_KEY]) {
+      settingsCache = { extensionEnabled: true, ...(changes[SETTINGS_KEY].newValue || {}) };
+      settingsReady = true;
+      if (settingsCache.extensionEnabled === false) removeAll();
+      else queueEvaluate(0);
+    }
+    if (Object.keys(changes).some(k => k.startsWith(RULE_PREFIX) || k.startsWith('idx:'))) {
+      invalidateRulesCache();
+      queueEvaluate(0);
+    }
+  });
+
+  collectShadowRoots(); observeAllRoots();
   evaluateAll();
 })();
