@@ -57,7 +57,6 @@ describe('score + decision engine', () => {
 
   it('is ambiguous when top two candidates are too close even above threshold', () => {
     const rule = sampleRule();
-
     const candidates: CandidateSnapshot[] = [
       {
         candidateId: 'a',
@@ -141,7 +140,7 @@ describe('score + decision engine', () => {
     expect(decision.reason).toBe('between-thresholds');
   });
 
-  it('renormalizes over available categories when others are unavailable', () => {
+  it('keeps confidence conservative when identifying signals are missing', () => {
     const rule = sampleRule();
     const ranked = rankCandidates({
       rule,
@@ -160,11 +159,11 @@ describe('score + decision engine', () => {
     });
 
     expect(ranked.c1).toBeDefined();
-    expect(ranked.c1?.totalScore).toBeGreaterThan(0);
+    expect(ranked.c1?.totalScore ?? 0).toBeLessThan(0.6);
 
     const decision = decideMatch(rule, ranked, POLICY);
-
-    expect(decision.status === 'ambiguous' || decision.status === 'notFound').toBe(true);
+    expect(decision.status).toBe('notFound');
+    expect(decision.reason).toBe('below-ambiguous-threshold');
   });
 
   it('returns disabled when rule is not enabled', () => {
