@@ -16,9 +16,12 @@
       const mainReady = !!document.getElementById('pb-selection-style');
       const frame = document.getElementById('pb-e2e-frame');
       const frameReady = !!frame?.contentDocument?.getElementById('pb-selection-style');
+      const shadowHost = document.querySelector('pb-e2e-host');
+      const shadowReady = !!shadowHost?.shadowRoot?.getElementById('pb-rule-style');
       document.documentElement.dataset.pbE2eMain = String(mainReady);
       document.documentElement.dataset.pbE2eFrame = String(frameReady);
-      if (mainReady && frameReady) document.documentElement.dataset.pbE2e = 'pass';
+      document.documentElement.dataset.pbE2eShadow = String(shadowReady);
+      if (mainReady && frameReady && shadowReady) document.documentElement.dataset.pbE2e = 'pass';
     };
     new MutationObserver(check).observe(document, { childList: true, subtree: true });
     window.addEventListener('load', check);
