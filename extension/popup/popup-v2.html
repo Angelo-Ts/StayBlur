@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>progettoBlur</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header class="header">
+      <div><h1>progettoBlur</h1><p class="subtitle">Gestione degli elementi oscurati</p></div>
+    </header>
+    <section class="toolbar">
+      <label class="toggle"><input id="enabled" type="checkbox"><span>Estensione attiva</span></label>
+      <button id="select" class="primary" type="button">Seleziona elemento</button>
+      <button id="removeAll" class="secondary" type="button">Togli gli effetti dalla pagina</button>
+      <button id="deleteAll" class="danger-outline" type="button">Elimina tutte le regole</button>
+      <p class="hint">“Togli effetti” è temporaneo: le regole restano salvate. “Elimina” cancella definitivamente le regole.</p>
+    </section>
+    <section class="rules-section">
+      <div class="section-title"><h2>Elementi oscurati</h2><span id="ruleCount" class="count">0</span></div>
+      <div id="rules"></div>
+      <p id="empty" class="empty">Nessun elemento oscurato in questa pagina.</p>
+    </section>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
