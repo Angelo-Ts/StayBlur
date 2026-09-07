@@ -22,21 +22,60 @@
     return tabs[0];
   }
 
+  function pageBlockedMessage(text) {
+    return /cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text)
+      ? 'Questa pagina non permette a progettoBlur di accedere al contenuto. Prova su una normale pagina web (http/https).'
+      : text;
+  }
+
+  async function injectContent(tabId) {
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS });
+  }
+
   async function sendToContent(tabId, message) {
     try {
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (firstError) {
       try {
-        await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS });
+        await injectContent(tabId);
         return await chrome.tabs.sendMessage(tabId, message);
       } catch (injectError) {
         const text = String(injectError?.message || firstError?.message || injectError);
-        if (/cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text)) {
-          throw new Error('Questa pagina non permette a progettoBlur di accedere al contenuto. Prova su una normale pagina web (http/https).');
-        }
-        throw injectError;
+        throw new Error(pageBlockedMessage(text));
       }
     }
+  }
+
+  async function startSelectionOnPage(tabId) {
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, { type: 'BG_ENTER_SELECTION' });
+      if (response?.ok) return response;
+    } catch (_) {}
+
+    try {
+      await injectContent(tabId);
+      const invoked = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        func: () => {
+          if (typeof globalThis.__progettoBlurStartSelection === 'function') {
+            globalThis.__progettoBlurStartSelection();
+            return true;
+          }
+          return false;
+        }
+      });
+      if (invoked.some(r => r.result === true)) return { ok: true };
+      return await chrome.tabs.sendMessage(tabId, { type: 'BG_ENTER_SELECTION' });
+    } catch (error) {
+      const text = String(error?.message || error);
+      throw new Error(pageBlockedMessage(text));
+    }
+  }
+
+  async function setExtensionEnabled(enabled) {
+    const stored = await chrome.storage.local.get({ [SETTINGS_KEY]: {} });
+    const current = stored[SETTINGS_KEY] || {};
+    await chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, extensionEnabled: Boolean(enabled) } });
   }
 
   async function deleteRule(ruleId) {
@@ -65,10 +104,14 @@
     (async () => {
       if (!message?.type) return sendResponse({ ok: false, error: 'missing-message-type' });
       if (message.type === 'POPUP_SET_EXTENSION_ENABLED') {
-        const stored = await chrome.storage.local.get({ [SETTINGS_KEY]: {} });
-        const current = stored[SETTINGS_KEY] || {};
-        await chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, extensionEnabled: Boolean(message.enabled) } });
+        await setExtensionEnabled(message.enabled);
         return sendResponse({ ok: true });
+      }
+      if (message.type === 'POPUP_START_SELECTION') {
+        const tab = sender.tab || await activeTab();
+        if (!tab?.id) return sendResponse({ ok: false, error: 'no-active-tab' });
+        await setExtensionEnabled(true);
+        return sendResponse(await startSelectionOnPage(tab.id));
       }
       if (message.type === 'POPUP_DELETE_RULE') {
         const tab = sender.tab || await activeTab();
