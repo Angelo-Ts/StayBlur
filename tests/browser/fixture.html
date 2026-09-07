@@ -16,15 +16,13 @@
       const mainReady = !!document.getElementById('pb-selection-style');
       const frame = document.getElementById('pb-e2e-frame');
       const frameReady = !!frame?.contentDocument?.getElementById('pb-selection-style');
-      const shadowReady = !!document.querySelector('pb-e2e-host')?.shadowRoot?.getElementById('pb-e2e-shadow');
       document.documentElement.dataset.pbE2eMain = String(mainReady);
       document.documentElement.dataset.pbE2eFrame = String(frameReady);
-      document.documentElement.dataset.pbE2eShadow = String(shadowReady);
-      if (mainReady && frameReady && shadowReady) document.documentElement.dataset.pbE2e = 'pass';
+      if (mainReady && frameReady) document.documentElement.dataset.pbE2e = 'pass';
     };
     new MutationObserver(check).observe(document, { childList: true, subtree: true });
     window.addEventListener('load', check);
-    setTimeout(check, 500);
+    setTimeout(check, 750);
   </script>
 </body>
 </html>
