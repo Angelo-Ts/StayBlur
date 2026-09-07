@@ -161,7 +161,7 @@
     let parent = el.parentElement, ancestor = 0, depth = 0;
     for (const expected of fp.ancestorContext?.chain || []) {
       if (!parent || depth++ >= 4) break;
-      if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableTokens(String(parent.className || '').split(/\s+/).includes(c)))) ancestor += 1;
+      if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableTokens(String(parent.className || '').split(/\s+/)).includes(c))) ancestor += 1;
       parent = parent.parentElement;
     }
     ancestor = fp.ancestorContext?.chain?.length ? ancestor / fp.ancestorContext.chain.length : 0;
@@ -236,7 +236,8 @@
     ensureStyle();
     if (!original.has(el)) original.set(el, { blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') });
     const px = Math.max(0, Math.min(100, Number(rule.intensity ?? 60)));
-    el.classList.add('pb-effect-base', `pb-effect-${rule.effect}`);
+    EFFECT_CLASSES.slice(1).forEach(c => el.classList.remove(c));
+    el.classList.add('pb-effect-base', `pb-effect-${rule.effect || 'blur'}`);
     el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
     el.setAttribute(ATTR, rule.ruleId);
@@ -266,7 +267,7 @@
 
   function effectIsIntact(el, rule) {
     if (!(el instanceof Element) || !el.isConnected) return false;
-    return el.getAttribute(ATTR) === rule.ruleId && el.classList.contains('pb-effect-base') && el.classList.contains(`pb-effect-${rule.effect}`);
+    return el.getAttribute(ATTR) === rule.ruleId && el.classList.contains('pb-effect-base') && el.classList.contains(`pb-effect-${rule.effect || 'blur'}`);
   }
   let integrityFrame = 0;
   let integrityQueued = false;
