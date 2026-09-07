@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const SETTINGS_KEY = 'pb:settings';
-  const CONTENT_SCRIPTS = ['content/selection-style.js', 'content/content-script.js'];
+  const CONTENT_SCRIPTS = ['content/selection-style.js', 'content/content-script.js', 'content/shadow-style.js'];
 
   const map = {
     POPUP_GET_STATE: 'CONTENT_GET_STATE',
@@ -83,7 +83,6 @@
     const stored = await chrome.storage.local.get({ [key]: null });
     const rule = stored[key];
     if (!rule) return;
-
     const domainKey = `idx:domain:${rule.domain}`;
     const pageKey = `idx:page:${rule.domain}:${rule.path || '/'}`;
     const indexes = await chrome.storage.local.get({ [domainKey]: [], [pageKey]: [] });
