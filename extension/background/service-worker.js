@@ -39,6 +39,22 @@
     }
   }
 
+  async function deleteRule(ruleId) {
+    const key = `rule:${ruleId}`;
+    const stored = await chrome.storage.local.get({ [key]: null });
+    const rule = stored[key];
+    if (!rule) return;
+
+    const domainKey = `idx:domain:${rule.domain}`;
+    const pageKey = `idx:page:${rule.domain}:${rule.path || '/'}`;
+    const indexes = await chrome.storage.local.get({ [domainKey]: [], [pageKey]: [] });
+    await chrome.storage.local.set({
+      [domainKey]: (indexes[domainKey] || []).filter(id => id !== ruleId),
+      [pageKey]: (indexes[pageKey] || []).filter(id => id !== ruleId)
+    });
+    await chrome.storage.local.remove(key);
+  }
+
   async function deleteAllRules() {
     const state = await chrome.storage.local.get(null);
     const keys = Object.keys(state).filter(key => key.startsWith('rule:') || key.startsWith('idx:'));
@@ -50,6 +66,14 @@
       if (!message?.type) return sendResponse({ ok: false, error: 'missing-message-type' });
       if (message.type === 'POPUP_SET_EXTENSION_ENABLED') {
         await chrome.storage.local.set({ [SETTINGS_KEY]: { extensionEnabled: Boolean(message.enabled) } });
+        return sendResponse({ ok: true });
+      }
+      if (message.type === 'POPUP_DELETE_RULE') {
+        const tab = sender.tab || await activeTab();
+        if (tab?.id) {
+          try { await sendToContent(tab.id, { type: 'BG_REMOVE_RULE_EFFECT_PAGE', ruleId: message.ruleId }); } catch (_) {}
+        }
+        await deleteRule(message.ruleId);
         return sendResponse({ ok: true });
       }
       if (message.type === 'POPUP_DELETE_ALL_RULES') {
