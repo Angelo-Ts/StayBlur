@@ -1,64 +1,26 @@
 (() => {
   'use strict';
 
-  // The main content script owns rule creation/fingerprinting. This layer
-  // improves the manual pick target and applies the popup-selected effect.
+  // The main content script owns rule creation, fingerprinting and rendering.
+  // This layer only improves the manual pick target before the main handler
+  // receives the synthetic click.
   let selecting = false;
   let syntheticClick = false;
   let hover = null;
   const HIGHLIGHT = 'pb-selection-refined-highlight';
   const UI_SELECTOR = '[data-progettoblur-ui="true"]';
   const OWN_STYLE_ID = 'pb-selection-refiner-style';
-  const PIXELATE_FILTER_ID = 'pb-progettoblur-pixelate-filter';
   const MEDIA = new Set(['IMG', 'VIDEO', 'AUDIO', 'CANVAS', 'SVG', 'IFRAME']);
   const CONTROLS = new Set(['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'A', 'SUMMARY']);
   const SEMANTIC = new Set(['ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DD', 'DL', 'DT', 'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'UL']);
   const INLINE_WRAPPERS = new Set(['SPAN', 'B', 'STRONG', 'EM', 'I', 'U', 'S', 'SMALL', 'MARK', 'CODE', 'SUB', 'SUP', 'TIME']);
-  const EFFECT_CLASSES = ['pb-effect-blur', 'pb-effect-strongBlur', 'pb-effect-pixelate', 'pb-effect-blackout', 'pb-effect-hide'];
-  const SETTINGS_KEY = 'pb:settings';
 
   function ensureStyle() {
-    if (!document.getElementById(OWN_STYLE_ID)) {
-      const style = document.createElement('style');
-      style.id = OWN_STYLE_ID;
-      style.textContent = `.${HIGHLIGHT}{outline:2px solid #00a3ff!important;outline-offset:1px!important;cursor:crosshair!important}.pb-effect-pixelate{filter:url("#${PIXELATE_FILTER_ID}") contrast(var(--pb-pixel-contrast,1.8)) saturate(.8)!important}`;
-      (document.head || document.documentElement).appendChild(style);
-    }
-
-    if (!document.getElementById(PIXELATE_FILTER_ID)) {
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', '0');
-      svg.setAttribute('height', '0');
-      svg.setAttribute('aria-hidden', 'true');
-      svg.style.position = 'absolute';
-      svg.style.width = '0';
-      svg.style.height = '0';
-      svg.style.overflow = 'hidden';
-      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-      filter.id = PIXELATE_FILTER_ID;
-      filter.setAttribute('x', '-10%');
-      filter.setAttribute('y', '-10%');
-      filter.setAttribute('width', '120%');
-      filter.setAttribute('height', '120%');
-      filter.setAttribute('color-interpolation-filters', 'sRGB');
-      const noise = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
-      noise.setAttribute('type', 'fractalNoise');
-      noise.setAttribute('baseFrequency', '0.12');
-      noise.setAttribute('numOctaves', '1');
-      noise.setAttribute('seed', '17');
-      noise.setAttribute('result', 'pbNoise');
-      const displacement = document.createElementNS('http://www.w3.org/2000/svg', 'feDisplacementMap');
-      displacement.setAttribute('in', 'SourceGraphic');
-      displacement.setAttribute('in2', 'pbNoise');
-      displacement.setAttribute('scale', '10');
-      displacement.setAttribute('xChannelSelector', 'R');
-      displacement.setAttribute('yChannelSelector', 'G');
-      filter.append(noise, displacement);
-      defs.appendChild(filter);
-      svg.appendChild(defs);
-      (document.body || document.documentElement).appendChild(svg);
-    }
+    if (document.getElementById(OWN_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = OWN_STYLE_ID;
+    style.textContent = `.${HIGHLIGHT}{outline:2px solid #00a3ff!important;outline-offset:1px!important;cursor:crosshair!important}`;
+    (document.head || document.documentElement).appendChild(style);
   }
 
   function valid(el) {
@@ -66,7 +28,7 @@
   }
 
   function hasOwnSemantics(el) {
-    return !!(el.id || el.getAttribute('role') || el.getAttribute('data-progettoblur-rule-id') || el.getAttribute('contenteditable') || el.hasAttribute('aria-label'));
+    return !!(el.id || el.getAttribute('role') || el.getAttribute('data-progettoblur-rule-id') || el.hasAttribute('contenteditable') || el.hasAttribute('aria-label'));
   }
 
   function isInteractive(el) {
@@ -114,36 +76,6 @@
     setHover(null);
   }
 
-  async function readSelectionPreferences() {
-    const result = await chrome.storage.local.get({
-      [SETTINGS_KEY]: { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 }
-    });
-    const settings = result[SETTINGS_KEY] || {};
-    const effect = ['blur', 'strongBlur', 'pixelate', 'blackout', 'hide'].includes(settings.selectionEffect) ? settings.selectionEffect : 'blur';
-    const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60) || 0));
-    return { effect, intensity };
-  }
-
-  async function applySelectedStyle(target, preferences) {
-    const ruleId = target.getAttribute('data-progettoblur-rule-id');
-    if (!ruleId) return;
-    const key = `rule:${ruleId}`;
-    const stored = await chrome.storage.local.get({ [key]: null });
-    const rule = stored[key];
-    if (!rule) return;
-
-    const updated = { ...rule, effect: preferences.effect, intensity: preferences.intensity, updatedAt: new Date().toISOString() };
-    await chrome.storage.local.set({ [key]: updated });
-
-    EFFECT_CLASSES.forEach(className => target.classList.remove(className));
-    target.classList.add(`pb-effect-${preferences.effect}`);
-    const px = preferences.intensity;
-    target.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
-    target.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
-    target.style.setProperty('--pb-pixel-contrast', `${1.25 + px / 100 * 1.75}`);
-    ensureStyle();
-  }
-
   function onMove(event) {
     if (!selecting) return;
     event.preventDefault();
@@ -151,16 +83,7 @@
     setHover(refinedTarget(event.target));
   }
 
-  async function waitForRule(target, attempts = 8) {
-    for (let i = 0; i < attempts; i += 1) {
-      const id = target.getAttribute('data-progettoblur-rule-id');
-      if (id) return id;
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-    return null;
-  }
-
-  async function onClick(event) {
+  function onClick(event) {
     if (!selecting || syntheticClick) return;
     const target = refinedTarget(event.target);
     if (!target) return;
@@ -168,7 +91,6 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     stopLocalSelection();
-    const preferences = await readSelectionPreferences();
 
     syntheticClick = true;
     try {
@@ -191,11 +113,6 @@
     } finally {
       syntheticClick = false;
     }
-
-    // The existing content script creates the rule asynchronously. Once its
-    // rule id is present, update the same rule rather than creating a duplicate.
-    await waitForRule(target);
-    await applySelectedStyle(target, preferences);
   }
 
   chrome.runtime.onMessage.addListener(message => {
