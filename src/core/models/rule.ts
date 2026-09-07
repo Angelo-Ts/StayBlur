@@ -17,6 +17,8 @@ export interface Rule {
   domain: string;
   path?: string;
   url?: string;
+  /** Identifies the document/frame where the rule was created. Optional for backward compatibility. */
+  frameKey?: string;
   enabled: boolean;
   status: RuleStatus;
   statusContext?: RuleStatusContext;
