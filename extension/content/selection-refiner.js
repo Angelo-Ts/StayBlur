@@ -3,9 +3,9 @@
 
   // The main content script owns rule creation, fingerprinting and rendering.
   // This layer only improves the manual pick target before the main handler
-  // receives the synthetic click.
+  // receives the selection event.
+  const SELECT_EVENT = 'progettoBlur:select-element';
   let selecting = false;
-  let syntheticClick = false;
   let hover = null;
   const HIGHLIGHT = 'pb-selection-refined-highlight';
   const UI_SELECTOR = '[data-progettoblur-ui="true"]';
@@ -84,35 +84,21 @@
   }
 
   function onClick(event) {
-    if (!selecting || syntheticClick) return;
+    if (!selecting) return;
     const target = refinedTarget(event.target);
     if (!target) return;
 
     event.preventDefault();
+    event.stopPropagation();
     event.stopImmediatePropagation();
     stopLocalSelection();
 
-    syntheticClick = true;
-    try {
-      target.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        detail: event.detail || 1,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        altKey: event.altKey,
-        metaKey: event.metaKey,
-        button: event.button,
-        buttons: event.buttons
-      }));
-    } finally {
-      syntheticClick = false;
-    }
+    // Do not synthesize another click: dispatch a private DOM event so the
+    // main content script can create the rule without re-entering page clicks.
+    document.dispatchEvent(new CustomEvent(SELECT_EVENT, {
+      bubbles: false,
+      detail: { element: target }
+    }));
   }
 
   chrome.runtime.onMessage.addListener(message => {
