@@ -181,8 +181,6 @@
     const currentRules = await getRules();
     if (!enabled || !currentRules.length) return;
 
-    // Process every rule against only the newly created subtree. This keeps
-    // scrolling/virtualization fast even on very large pages.
     await Promise.all(currentRules.map(async rule => {
       const trackedEl = tracked.get(rule.ruleId);
       if (trackedEl?.isConnected && trackedEl.getAttribute(ATTR) === rule.ruleId) return;
@@ -194,8 +192,6 @@
   function schedule(nodes) {
     for (const node of nodes) if (node instanceof Element) pendingNodes.add(node);
     if (!pendingNodes.size || flushTimer) return;
-    // Run before the next paint when possible; this is important for scroll
-    // virtualization where the user can see a newly mounted card immediately.
     if (typeof requestAnimationFrame === 'function') {
       flushTimer = requestAnimationFrame(() => { flushTimer = 0; flush(); });
     } else {
@@ -215,6 +211,12 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
+  function hasEffect(rule, el) {
+    return el.getAttribute(ATTR) === rule.ruleId &&
+      el.classList.contains('pb-effect-base') &&
+      el.classList.contains(`pb-effect-${rule.effect || 'blur'}`);
+  }
+
   function observeVisibility() {
     if (visibilityObserver || typeof IntersectionObserver !== 'function') return;
     visibilityObserver = new IntersectionObserver(entries => {
@@ -222,9 +224,8 @@
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const el = entry.target;
-        const ruleId = el.getAttribute(ATTR);
-        const rule = ruleId && rules.find(r => r.ruleId === ruleId);
-        if (rule && el.isConnected && el.getAttribute(ATTR) !== rule.ruleId) apply(el, rule);
+        const rule = rules.find(r => tracked.get(r.ruleId) === el);
+        if (rule && el.isConnected && !hasEffect(rule, el)) apply(el, rule);
       }
     }, { root: null, rootMargin: '200px 0px' });
   }
