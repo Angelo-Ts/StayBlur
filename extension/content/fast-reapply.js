@@ -10,6 +10,7 @@
   const PAGE_PREFIX = 'idx:page:';
   const ATTR = 'data-progettoblur-rule-id';
   const STYLE_ID = 'pb-rule-style';
+  const PIXELATE_FILTER_ID = 'pb-progettoblur-pixelate-filter';
   const EFFECT_CLASSES = ['pb-effect-base', 'pb-effect-blur', 'pb-effect-strongBlur', 'pb-effect-pixelate', 'pb-effect-blackout', 'pb-effect-hide'];
   const MAX_SUBTREE_NODES = 800;
   const TEXT_LIMIT = 1200;
@@ -78,8 +79,43 @@
     if (document.getElementById(STYLE_ID)) return;
     const s = document.createElement('style');
     s.id = STYLE_ID;
-    s.textContent = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:blur(8px) contrast(1.8)!important}.pb-effect-blackout{filter:brightness(0)!important;color:transparent!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}`;
+    s.textContent = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:url("#${PIXELATE_FILTER_ID}") contrast(var(--pb-pixel-contrast,1.8)) saturate(.8)!important}.pb-effect-blackout{filter:brightness(0)!important;color:transparent!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}`;
     (document.head || document.documentElement).appendChild(s);
+
+    if (!document.getElementById(PIXELATE_FILTER_ID)) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '0');
+      svg.setAttribute('height', '0');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.style.position = 'absolute';
+      svg.style.width = '0';
+      svg.style.height = '0';
+      svg.style.overflow = 'hidden';
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+      filter.id = PIXELATE_FILTER_ID;
+      filter.setAttribute('x', '-10%');
+      filter.setAttribute('y', '-10%');
+      filter.setAttribute('width', '120%');
+      filter.setAttribute('height', '120%');
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      const noise = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
+      noise.setAttribute('type', 'fractalNoise');
+      noise.setAttribute('baseFrequency', '0.12');
+      noise.setAttribute('numOctaves', '1');
+      noise.setAttribute('seed', '17');
+      noise.setAttribute('result', 'pbNoise');
+      const displacement = document.createElementNS('http://www.w3.org/2000/svg', 'feDisplacementMap');
+      displacement.setAttribute('in', 'SourceGraphic');
+      displacement.setAttribute('in2', 'pbNoise');
+      displacement.setAttribute('scale', '10');
+      displacement.setAttribute('xChannelSelector', 'R');
+      displacement.setAttribute('yChannelSelector', 'G');
+      filter.append(noise, displacement);
+      defs.appendChild(filter);
+      svg.appendChild(defs);
+      (document.body || document.documentElement).appendChild(svg);
+    }
   }
 
   function track(el, rule) {
@@ -96,6 +132,7 @@
     el.classList.add('pb-effect-base', `pb-effect-${rule.effect || 'blur'}`);
     el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`);
     el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`);
+    el.style.setProperty('--pb-pixel-contrast', `${1.25 + px / 100 * 1.75}`);
     el.setAttribute(ATTR, rule.ruleId);
     track(el, rule);
   }
