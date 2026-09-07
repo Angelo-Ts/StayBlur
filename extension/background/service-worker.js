@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const SETTINGS_KEY = 'pb:settings';
-  const CONTENT_SCRIPTS = ['content/content-script.js'];
+  const CONTENT_SCRIPTS = ['content/selection-style.js', 'content/content-script.js'];
 
   const map = {
     POPUP_GET_STATE: 'CONTENT_GET_STATE',
@@ -29,7 +29,7 @@
   }
 
   async function injectContent(tabId) {
-    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_SCRIPTS });
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS });
   }
 
   async function sendToContent(tabId, message) {
