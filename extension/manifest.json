@@ -7,5 +7,5 @@
   "host_permissions": ["<all_urls>"],
   "background": {"service_worker": "background/service-worker.js", "type": "module"},
   "action": {"default_title": "progettoBlur", "default_popup": "popup/popup.html"},
-  "content_scripts": [{"matches": ["<all_urls>"], "js": ["content/fast-reapply.js", "content/selection-refiner.js", "content/content-script.js"], "run_at": "document_idle", "all_frames": true}]
+  "content_scripts": [{"matches": ["<all_urls>"], "js": ["content/selection-refiner.js", "content/content-script.js"], "run_at": "document_idle", "all_frames": true}]
 }
