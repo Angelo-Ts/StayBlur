@@ -89,11 +89,15 @@
   }
 
   async function refresh() {
-    const r = await send('POPUP_GET_STATE');
+    const [r, stored] = await Promise.all([
+      send('POPUP_GET_STATE'),
+      chrome.storage.local.get({ 'pb:settings': { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 } })
+    ]);
     if (!r?.ok) return status(r?.error || 'Impossibile leggere lo stato della pagina.');
+    const settings = stored['pb:settings'] || {};
     $('enabled').checked = r.extensionEnabled !== false;
-    $('effect').value = r.selectionEffect || 'blur';
-    $('intensity').value = String(r.selectionIntensity ?? 60);
+    $('effect').value = settings.selectionEffect || 'blur';
+    $('intensity').value = String(settings.selectionIntensity ?? 60);
     $('intensityValue').textContent = `${$('intensity').value}%`;
     renderRules(r.rules);
   }
