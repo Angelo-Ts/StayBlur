@@ -65,7 +65,9 @@
     (async () => {
       if (!message?.type) return sendResponse({ ok: false, error: 'missing-message-type' });
       if (message.type === 'POPUP_SET_EXTENSION_ENABLED') {
-        await chrome.storage.local.set({ [SETTINGS_KEY]: { extensionEnabled: Boolean(message.enabled) } });
+        const stored = await chrome.storage.local.get({ [SETTINGS_KEY]: {} });
+        const current = stored[SETTINGS_KEY] || {};
+        await chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, extensionEnabled: Boolean(message.enabled) } });
         return sendResponse({ ok: true });
       }
       if (message.type === 'POPUP_DELETE_RULE') {
