@@ -1,0 +1,1 @@
+Temporary design note: the popup v2 work will simplify rule management and replace per-rule technical actions with a single clear remove/delete flow.
