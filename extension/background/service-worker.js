@@ -29,7 +29,7 @@
   }
 
   async function injectContent(tabId) {
-    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS });
+    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_SCRIPTS });
   }
 
   async function sendToContent(tabId, message) {
@@ -55,7 +55,7 @@
     try {
       await injectContent(tabId);
       const invoked = await chrome.scripting.executeScript({
-        target: { tabId, allFrames: true },
+        target: { tabId },
         func: () => {
           if (typeof globalThis.__progettoBlurStartSelection === 'function') {
             globalThis.__progettoBlurStartSelection();
