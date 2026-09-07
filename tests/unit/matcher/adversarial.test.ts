@@ -104,4 +104,26 @@ describe('matcher adversarial safety cases', () => {
     expect(ranked.c1?.breakdown.structureContext.available).toBe(false);
     expect(ranked.c1?.independentContributions).toBe(3);
   });
+
+  it('does not auto-apply when strong support signals accompany only two independent categories', () => {
+    const rule = sampleRule();
+    const ranked = rankCandidates({
+      rule,
+      minCategoryContribution: MIN_CATEGORY_CONTRIBUTION,
+      candidates: [candidate({
+        candidateId: 'two-independent',
+        semanticAttributes: candidate().semanticAttributes,
+        classNames: [],
+        normalizedTextHash: undefined,
+        ancestorContext: { chain: [], depthCaptured: 0 },
+        structureContext: {},
+        geometricHint: rule.fingerprint.geometricHint,
+        cssSelectorMatched: true
+      })]
+    });
+
+    expect(ranked.c1?.independentContributions).toBe(2);
+    expect(ranked.c1?.totalScore).toBeGreaterThan(0.85);
+    expect(decideMatch(rule, ranked, POLICY).status).toBe('ambiguous');
+  });
 });
