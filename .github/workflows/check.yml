@@ -27,12 +27,32 @@ jobs:
       - name: Install Chromium
         run: |
           echo '=== Chromium installation ==='
-          sudo apt-get update
-          sudo apt-get install -y chromium
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo 'Using preinstalled Google Chrome'
+            echo "CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo 'Using preinstalled Chromium'
+            echo "CHROMIUM_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+          else
+            echo 'No browser found; installing Chromium'
+            sudo apt-get update
+            sudo apt-get install -y chromium
+            echo "CHROMIUM_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+          fi
           echo '=== Chromium binary ==='
-          command -v chromium || command -v chromium-browser
-          chromium --version || chromium-browser --version
+          "$CHROMIUM_PATH" --version || true
+          echo "CHROMIUM_PATH=$CHROMIUM_PATH"
+      - name: Install Xvfb
+        run: |
+          if command -v Xvfb >/dev/null 2>&1 && command -v xvfb-run >/dev/null 2>&1; then
+            echo 'Xvfb already available'
+          else
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
       - name: Run browser smoke
+        env:
+          BROWSER_HEADLESS: '0'
         run: |
           echo '=== Browser smoke: starting ==='
           echo "Runner: $(uname -a)"
@@ -40,6 +60,6 @@ jobs:
           echo "Working directory: $PWD"
           echo '=== Extension files ==='
           find extension -maxdepth 2 -type f | sort
-          echo '=== Launching Chromium smoke test ==='
+          echo '=== Launching Chromium smoke test under Xvfb ==='
           node scripts/browser-smoke.mjs
           echo '=== Browser smoke: finished ==='
