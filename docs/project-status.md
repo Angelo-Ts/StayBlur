@@ -4,7 +4,13 @@
 
 The current branch is `copilot/add-phase-1-5-design`.
 
-Implemented and manually validated during development:
+### V1 functional acceptance
+
+The manual V1 acceptance flow has been completed on Microsoft Edge/Windows using the repository fixture. The fundamental persistence flow and the manual acceptance blocks have been exercised successfully, including SPA navigation, same-origin iframe selection, multiple rules, rule deletion, single-rule enable/disable, and global enable/disable/reactivation.
+
+The final V1 acceptance flow (block M) passed, and no false-positive was observed in the safety checks (block J).
+
+### Implemented
 
 - Chromium/Edge Manifest V3 extension structure.
 - Native browser popup, without opening a separate extension window.
@@ -12,7 +18,8 @@ Implemented and manually validated during development:
 - Persistent rules in `chrome.storage.local`, partitioned by domain/path.
 - Automatic re-application after refresh/browser restart.
 - SPA navigation handling (`pushState`, `replaceState`, `popstate`, `hashchange`).
-- Dynamic DOM / virtualized DOM re-application fast path.
+- Dynamic DOM / virtualized DOM re-application.
+- Same-origin iframe selection and frame-aware rule context.
 - Shadow DOM traversal for open shadow roots.
 - Safety-first matcher with multiple fingerprint signals, confidence threshold and ambiguity guard.
 - Protection against duplicate rules on an already obscured element.
@@ -20,40 +27,53 @@ Implemented and manually validated during development:
 - Effects: blur, strong blur, pixelate, blackout and hide.
 - User-selectable effect and intensity from the popup.
 - Temporary page suppression and permanent rule deletion.
+- Single-rule enable/disable/reactivation.
+- Global enable/disable/reactivation of saved rules.
 - Extension-wide enable/disable gate.
-- Automated unit test suite: 9 tests currently passing.
-- GitHub Actions `Check` workflow passing on the current branch.
+- Automated unit test suite and GitHub Actions validation.
+- Manifest validation for required MV3 structure, permissions, host access and content-script configuration.
 
-## Known limitations / next work
+## Known limitations / post-V1 backlog
 
-### High priority
+These are deliberately not blockers for the accepted V1 functional flow:
 
-1. Browser E2E coverage: real Edge/Chromium scenarios are not yet automated.
-2. Selection lifecycle hardening: verify suppression, deletion and reactivation across dynamic pages.
-3. Cross-frame rule identity: same-origin iframe support needs explicit frame-aware rule context to avoid collisions.
-4. Rendering consolidation: the runtime currently contains duplicated rendering logic between content scripts and `extension/core`.
-5. Effect correctness: pixelation is experimental and currently not considered final UX. It may be removed or redesigned later.
+1. **Blackout on text:** on some text elements the blackout effect does not render as a true opaque black result and can leave text visually white.
+2. **Blackout inside open Shadow DOM:** blackout rendering can leave the interior of a Shadow DOM element visually incorrect even though the element is otherwise obscured.
+3. **Pixelation:** the current implementation is experimental and needs a more robust rendering strategy before being considered final UX.
+4. **Complex rendering:** canvas/video-specific and other browser-rendered sub-content may require specialized handling where DOM selection cannot target the visual sub-content directly.
 
-### Medium priority
+## Next engineering work
 
-6. More integration tests for content/background messaging.
-7. More tests for SPA navigation and MutationObserver behaviour.
-8. More adversarial matcher tests focused on false-positive prevention.
-9. Performance pass on very large DOMs and pages with aggressive re-rendering.
-10. Documentation for installation, supported browsers and limitations.
+### Priority 1 — hardening
 
-### Lower priority / future
+- Consolidate duplicated runtime/core matcher and rendering logic where safe.
+- Preserve the safety invariant: false negatives are preferable to false positives.
+- Harden rule lifecycle across navigation, DOM replacement and repeated mutations.
+- Optimize candidate discovery and fingerprint computation on large/dynamic pages.
+- Review background/content messaging and frame coordination.
 
-11. Better site-vs-page scope UX.
-12. Optional rule editing after creation.
-13. Closed Shadow DOM support, if technically feasible.
-14. Improved handling for canvas/video-specific content where sub-element selection is impossible.
-15. Packaging/release process for Edge/Chrome/Brave/Opera and macOS validation.
+### Priority 2 — automated validation
 
-## Rough completion estimate
+- Add focused integration tests for content/background messaging.
+- Add lifecycle tests for deletion, disable/enable and reactivation.
+- Add SPA/MutationObserver regression tests.
+- Expand adversarial matcher coverage.
+- Add targeted performance/large-DOM checks.
 
-The core v1 behaviour is substantially implemented. A reasonable estimate is **around 75–80% of a polished v1 release**.
+### Priority 3 — release candidate
 
-The remaining work is weighted toward reliability and validation rather than adding many new user-facing features. The largest milestone is browser E2E testing plus fixing anything exposed by real-world pages.
+- Finalize README and installation/limitations documentation.
+- Review versioning and release metadata.
+- Validate clean installation on Edge and Chromium-based browsers.
+- Prepare packaging/release process for Edge/Chrome/Brave/Opera; macOS validation remains future work.
+- Perform final security/safety audit.
 
-Pixelation is deliberately not treated as a blocker: it can be removed or redesigned after the rest of the extension is stable.
+## Future / V1.1+
+
+- Rework blackout rendering for text and Shadow DOM.
+- Replace/redesign pixelation.
+- Better site-vs-page scope UX.
+- Optional rule editing after creation.
+- Closed Shadow DOM support, if technically feasible.
+- Additional canvas/video-specific rendering support.
+- Browser portability and macOS validation beyond the initial Edge/Windows target.
