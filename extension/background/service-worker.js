@@ -48,14 +48,9 @@
 
   async function startSelectionOnPage(tabId) {
     try {
-      const response = await chrome.tabs.sendMessage(tabId, { type: 'BG_ENTER_SELECTION' });
-      if (response?.ok) return response;
-    } catch (_) {}
-
-    try {
       await injectContent(tabId);
       const invoked = await chrome.scripting.executeScript({
-        target: { tabId },
+        target: { tabId, allFrames: true },
         func: () => {
           if (typeof globalThis.__progettoBlurStartSelection === 'function') {
             globalThis.__progettoBlurStartSelection();
@@ -65,7 +60,7 @@
         }
       });
       if (invoked.some(r => r.result === true)) return { ok: true };
-      return await chrome.tabs.sendMessage(tabId, { type: 'BG_ENTER_SELECTION' });
+      return { ok: false, error: 'selection-script-not-available' };
     } catch (error) {
       const text = String(error?.message || error);
       throw new Error(pageBlockedMessage(text));
