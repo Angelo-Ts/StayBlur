@@ -25,7 +25,7 @@
   }
   async function saveSelectionPreferences(){const effect=$('effect').value,intensity=Math.max(0,Math.min(100,Number($('intensity').value)||0)),stored=await chrome.storage.local.get({'pb:settings':{extensionEnabled:$('enabled').checked}}),current=stored['pb:settings']||{};await chrome.storage.local.set({'pb:settings':{...current,extensionEnabled:$('enabled').checked,selectionEffect:effect,selectionIntensity:intensity}});$('intensityValue').textContent=`${intensity}%`}
   async function refresh(){
-    const[r,stored]=await Promise.all([send('POPUP_GET_STATE'),chrome.storage.local.get({'pb:settings':{extensionEnabled:true,selectionEffect:'blur',selectionIntensity:60}})];
+    const [r,stored]=await Promise.all([send('POPUP_GET_STATE'),chrome.storage.local.get({'pb:settings':{extensionEnabled:true,selectionEffect:'blur',selectionIntensity:60}})]);
     if(!r?.ok)return status(r?.error||'Impossibile leggere lo stato della pagina.');
     const settings=stored['pb:settings']||{};$('enabled').checked=r.extensionEnabled!==false;$('effect').value=settings.selectionEffect||'blur';$('intensity').value=String(settings.selectionIntensity??60);$('intensityValue').textContent=`${$('intensity').value}%`;renderRules(r.rules);
     const rules=r.rules||[],allDisabled=rules.length>0&&rules.every(rule=>rule.enabled===false),toggleAll=$('toggleAll');if(toggleAll){toggleAll.disabled=rules.length===0;toggleAll.textContent=allDisabled?'Riabilita tutti gli oscuramenti':'Disattiva tutti gli oscuramenti'}
