@@ -31,22 +31,26 @@
     const [r, stored] = await Promise.all([send('POPUP_GET_STATE'), chrome.storage.local.get({ 'pb:settings': { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 } })]);
     if (!r?.ok) return status(r?.error || 'Impossibile leggere lo stato della pagina.'); const settings = stored['pb:settings'] || {};
     $('enabled').checked = r.extensionEnabled !== false; $('effect').value = settings.selectionEffect || 'blur'; $('intensity').value = String(settings.selectionIntensity ?? 60); $('intensityValue').textContent = `${$('intensity').value}%`; renderRules(r.rules);
+    const allActive = (r.rules || []).length > 0 && r.rules.every(rule => rule.enabled !== false);
+    const allDisabled = (r.rules || []).length > 0 && r.rules.every(rule => rule.enabled === false);
+    const toggleAll = $('toggleAll');
+    if (toggleAll) { toggleAll.disabled = !(allActive || allDisabled); toggleAll.textContent = allActive ? 'Disattiva tutti gli oscuramenti' : allDisabled ? 'Riabilita tutti gli oscuramenti' : 'Disattiva tutti gli oscuramenti'; }
   }
   $('close').onclick = () => window.close();
   $('enabled').onchange = async e => { const r = await send('POPUP_SET_EXTENSION_ENABLED', { enabled: e.target.checked }); if (!r?.ok) status(r?.error || 'Impossibile modificare lo stato.'); else { await saveSelectionPreferences(); status(e.target.checked ? 'Estensione attivata.' : 'Estensione disattivata.'); await refresh(); } };
   $('effect').onchange = async () => { await saveSelectionPreferences(); status('Effetto salvato per la prossima selezione.'); };
   $('intensity').oninput = () => { $('intensityValue').textContent = `${$('intensity').value}%`; }; $('intensity').onchange = async () => { await saveSelectionPreferences(); status('Intensità salvata per la prossima selezione.'); };
   $('select').onclick = async () => { await saveSelectionPreferences(); const r = await send('POPUP_START_SELECTION'); if (r?.ok) status('Selezione attiva: passa sulla pagina e clicca l’elemento da oscurare. Premi Esc per annullare.'); else status(r?.error || 'Impossibile avviare la selezione.'); };
-  $('removeAll').onclick = async () => {
+  $('toggleAll').onclick = async () => {
     const current = await send('POPUP_GET_STATE'); if (!current?.ok) return status(current?.error || 'Impossibile leggere le regole.');
-    const activeRules = (current.rules || []).filter(rule => rule.enabled !== false); if (!activeRules.length) return status('Non ci sono regole attive da disattivare.');
-    const results = await Promise.all(activeRules.map(rule => send('POPUP_DISABLE_RULE', { ruleId: rule.ruleId })));
-    if (results.every(r => r?.ok)) { status('Tutti gli oscuramenti sono stati disattivati. Le regole restano salvate.'); await refresh(); } else status('Alcune regole non sono state disattivate.');
-  };
-  $('enableAll').onclick = async () => {
-    const current = await send('POPUP_GET_STATE'); if (!current?.ok) return status(current?.error || 'Impossibile leggere le regole.');
-    const disabledRules = (current.rules || []).filter(rule => rule.enabled === false); if (!disabledRules.length) return status('Non ci sono regole disattivate da riabilitare.');
-    const r = await send('POPUP_ENABLE_ALL_RULES'); if (r?.ok) { status('Tutti gli oscuramenti sono stati riabilitati.'); await refresh(); } else status(r?.error || 'Impossibile riabilitare gli oscuramenti.');
+    const rules = current.rules || [];
+    if (!rules.length) return status('Non ci sono regole salvate.');
+    const allActive = rules.every(rule => rule.enabled !== false);
+    const allDisabled = rules.every(rule => rule.enabled === false);
+    if (!allActive && !allDisabled) return status('Le regole hanno stati diversi: gestiscile singolarmente.');
+    const type = allActive ? 'POPUP_DISABLE_ALL_RULES' : 'POPUP_ENABLE_ALL_RULES';
+    const r = await send(type);
+    if (r?.ok) { status(allActive ? 'Tutti gli oscuramenti sono stati disattivati.' : 'Tutti gli oscuramenti sono stati riabilitati.'); await refresh(); } else status(r?.error || 'Impossibile modificare gli oscuramenti.');
   };
   $('deleteAll').onclick = async () => { if (!confirm('Eliminare TUTTI gli oscuramenti salvati? Questa operazione non può essere annullata.')) return; const r = await send('POPUP_DELETE_ALL_RULES'); if (r?.ok) { status('Tutti gli oscuramenti sono stati eliminati.'); await refresh(); } else status(r?.error || 'Impossibile eliminare gli oscuramenti.'); };
   refresh();
