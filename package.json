@@ -1,13 +1,13 @@
 {
   "name": "progettoblur",
-  "version": "0.2.2",
-  "description": "Progetto per creare una estensione per blurrare i siti web",
+  "version": "1.0.0",
+  "description": "Manifest V3 browser extension for persistent, safety-first element obscuring.",
   "main": "index.js",
   "directories": {"doc": "docs"},
   "scripts": {"test": "vitest run", "test:watch": "vitest", "build": "tsc -p tsconfig.json --noEmit", "validate:extension": "node scripts/validate-extension.mjs", "check": "npm run build && npm test && npm run validate:extension"},
-  "repository": {"type": "git", "url": "http://localhost:26831/Angelo-Ts/progettoBlur"},
-  "keywords": [],
-  "author": "",
+  "repository": {"type": "git", "url": "https://github.com/Angelo-Ts/progettoBlur.git"},
+  "keywords": ["browser-extension", "chromium", "manifest-v3", "blur", "privacy", "presentation"],
+  "author": "Angelo-Ts",
   "license": "ISC",
   "type": "module",
   "devDependencies": {"@types/node": "^26.4.1", "typescript": "^7.0.2", "vitest": "^5.0.0"}
