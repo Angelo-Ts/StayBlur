@@ -1,0 +1,1 @@
+The supplied PNG concept is the source reference for the raster icon. The vector source is kept in `extension/icons/stayblur-icon.svg`.
