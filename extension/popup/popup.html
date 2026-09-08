@@ -15,41 +15,25 @@
       </div>
       <button id="close" class="icon-button" type="button" title="Chiudi">×</button>
     </header>
-
     <section class="toolbar">
-      <label class="toggle">
-        <input id="enabled" type="checkbox">
-        <span>Estensione attiva</span>
-      </label>
-
+      <label class="toggle"><input id="enabled" type="checkbox"><span>Estensione attiva</span></label>
       <div class="selection-options">
         <label for="effect">Effetto per la prossima selezione</label>
-        <select id="effect">
-          <option value="blur">Blur</option>
-          <option value="strongBlur">Blur forte</option>
-          <option value="pixelate">Pixelatura</option>
-          <option value="blackout">Oscura</option>
-          <option value="hide">Nascondi</option>
-        </select>
+        <select id="effect"><option value="blur">Blur</option><option value="strongBlur">Blur forte</option><option value="pixelate">Pixelatura</option><option value="blackout">Oscura</option><option value="hide">Nascondi</option></select>
         <label for="intensity">Intensità <output id="intensityValue">60%</output></label>
         <input id="intensity" type="range" min="0" max="100" step="5" value="60">
       </div>
-
       <button id="select" class="primary" type="button">Seleziona elemento</button>
       <button id="removeAll" class="secondary" type="button">Disattiva tutti gli oscuramenti</button>
+      <button id="enableAll" class="secondary" type="button">Riabilita tutti gli oscuramenti</button>
       <button id="deleteAll" class="danger-outline" type="button">Elimina tutti gli oscuramenti</button>
-      <p class="hint">“Disattiva” mantiene la regola salvata ma sospende l’effetto; la regola può essere riabilitata. “Elimina” cancella definitivamente la regola.</p>
+      <p class="hint">“Disattiva” mantiene la regola salvata ma sospende l’effetto; “Riabilita” riattiva le regole senza crearne di nuove. “Elimina” cancella definitivamente la regola.</p>
     </section>
-
     <section class="rules-section">
-      <div class="section-title">
-        <h2>Elementi oscurati in questa pagina</h2>
-        <span id="ruleCount" class="count">0</span>
-      </div>
+      <div class="section-title"><h2>Elementi oscurati in questa pagina</h2><span id="ruleCount" class="count">0</span></div>
       <div id="rules"></div>
       <p id="empty" class="empty">Nessun elemento oscurato in questa pagina.</p>
     </section>
-
     <p id="status" class="status" role="status"></p>
   </main>
   <script src="popup.js"></script>
