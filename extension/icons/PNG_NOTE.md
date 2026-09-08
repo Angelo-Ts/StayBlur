@@ -1,0 +1,1 @@
+Chrome recommends PNG for extension icons. The current branch keeps the SVG source for branding; raster store assets will be committed before the stable release.
