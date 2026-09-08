@@ -73,6 +73,25 @@
     await chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, extensionEnabled: Boolean(enabled) } });
   }
 
+  async function getRule(ruleId) {
+    const key = `rule:${ruleId}`;
+    const stored = await chrome.storage.local.get({ [key]: null });
+    return stored[key] || null;
+  }
+
+  async function setRuleEnabled(ruleId, enabled) {
+    const rule = await getRule(ruleId);
+    if (!rule) return null;
+    const updated = {
+      ...rule,
+      enabled: Boolean(enabled),
+      status: enabled ? 'pending' : 'disabled',
+      updatedAt: new Date().toISOString()
+    };
+    await chrome.storage.local.set({ [`rule:${ruleId}`]: updated });
+    return updated;
+  }
+
   async function deleteRule(ruleId) {
     const key = `rule:${ruleId}`;
     const stored = await chrome.storage.local.get({ [key]: null });
@@ -106,6 +125,20 @@
         if (!tab?.id) return sendResponse({ ok: false, error: 'no-active-tab' });
         await setExtensionEnabled(true);
         return sendResponse(await startSelectionOnPage(tab.id));
+      }
+      if (message.type === 'POPUP_DISABLE_RULE' || message.type === 'POPUP_ENABLE_RULE') {
+        const enabled = message.type === 'POPUP_ENABLE_RULE';
+        const updated = await setRuleEnabled(message.ruleId, enabled);
+        if (!updated) return sendResponse({ ok: false, error: 'rule-not-found' });
+        const tab = sender.tab || await activeTab();
+        if (tab?.id) {
+          try {
+            await sendToContent(tab.id, enabled
+              ? { type: 'BG_RETRY_RULE_ON_PAGE', ruleId: message.ruleId }
+              : { type: 'BG_REMOVE_RULE_EFFECT_PAGE', ruleId: message.ruleId });
+          } catch (_) {}
+        }
+        return sendResponse({ ok: true, rule: updated });
       }
       if (message.type === 'POPUP_DELETE_RULE') {
         const tab = sender.tab || await activeTab();
