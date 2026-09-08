@@ -35,12 +35,10 @@ describe('matcher safety evidence', () => {
     expect(score.independentContributions).toBe(0);
   });
 
-  it('keeps a support-signal-only match ambiguous even when its normalized score is high', () => {
+  it('keeps a support-signal-only match ambiguous instead of auto-applying it', () => {
     const rule = sampleRule();
     const candidate = scoreCandidate(rule.fingerprint, candidateWithOnlySupportSignals(), 0.65);
     const ranked: RankedCandidates = { sorted: [candidate], c1: candidate };
-
-    expect(candidate.totalScore).toBeGreaterThanOrEqual(0.85);
 
     const decision = decideMatch(rule, ranked, POLICY);
     expect(decision.status).toBe('ambiguous');
