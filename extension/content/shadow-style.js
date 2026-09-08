@@ -2,7 +2,7 @@
   'use strict';
 
   const STYLE_ID = 'pb-rule-style-blackout-fix';
-  const CSS = `.pb-effect-blackout{filter:brightness(0)!important;text-shadow:none!important}`;
+  const CSS = `.pb-effect-blackout{filter:brightness(0)!important;color:#000!important;text-shadow:none!important}`;
   const knownRoots = new WeakSet();
 
   function install(root) {
