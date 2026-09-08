@@ -1,6 +1,6 @@
 {
   "name": "progettoblur",
-  "version": "1.0.0",
+  "version": "0.2.2",
   "description": "Progetto per creare una estensione per blurrare i siti web",
   "main": "index.js",
   "directories": {
