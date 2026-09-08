@@ -82,14 +82,22 @@
   async function setRuleEnabled(ruleId, enabled) {
     const rule = await getRule(ruleId);
     if (!rule) return null;
-    const updated = {
-      ...rule,
-      enabled: Boolean(enabled),
-      status: enabled ? 'pending' : 'disabled',
-      updatedAt: new Date().toISOString()
-    };
+    const updated = { ...rule, enabled: Boolean(enabled), status: enabled ? 'pending' : 'disabled', updatedAt: new Date().toISOString() };
     await chrome.storage.local.set({ [`rule:${ruleId}`]: updated });
     return updated;
+  }
+
+  async function setAllRulesEnabled(enabled) {
+    const state = await chrome.storage.local.get(null);
+    const rules = Object.entries(state).filter(([key, value]) => key.startsWith('rule:') && value && typeof value === 'object');
+    if (!rules.length) return 0;
+    const now = new Date().toISOString();
+    const updates = {};
+    for (const [key, rule] of rules) {
+      updates[key] = { ...rule, enabled: Boolean(enabled), status: enabled ? 'pending' : 'disabled', updatedAt: now };
+    }
+    await chrome.storage.local.set(updates);
+    return rules.length;
   }
 
   async function deleteRule(ruleId) {
@@ -125,6 +133,19 @@
         if (!tab?.id) return sendResponse({ ok: false, error: 'no-active-tab' });
         await setExtensionEnabled(true);
         return sendResponse(await startSelectionOnPage(tab.id));
+      }
+      if (message.type === 'POPUP_DISABLE_ALL_RULES' || message.type === 'POPUP_ENABLE_ALL_RULES') {
+        const enabled = message.type === 'POPUP_ENABLE_ALL_RULES';
+        const count = await setAllRulesEnabled(enabled);
+        const tab = sender.tab || await activeTab();
+        if (tab?.id) {
+          try {
+            await sendToContent(tab.id, enabled
+              ? { type: 'BG_RETRY_ALL_RULES_ON_PAGE' }
+              : { type: 'BG_REMOVE_ALL_EFFECTS_PAGE' });
+          } catch (_) {}
+        }
+        return sendResponse({ ok: true, count });
       }
       if (message.type === 'POPUP_DISABLE_RULE' || message.type === 'POPUP_ENABLE_RULE') {
         const enabled = message.type === 'POPUP_ENABLE_RULE';
