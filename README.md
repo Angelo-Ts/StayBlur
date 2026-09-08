@@ -1,10 +1,31 @@
-# StayBlur
+<p align="center">
+  <img src="assets/branding/stayblur-icon.svg" width="140" alt="StayBlur icon">
+</p>
 
-**Persistent blur for the web.**
+<h1 align="center">StayBlur</h1>
+
+<p align="center"><strong>Persistent blur for the web.</strong><br>Hide what you don't want to show. Keep it hidden until you decide otherwise.</p>
+
+<p align="center">
+  <img src="assets/branding/stayblur-wordmark.svg" width="420" alt="StayBlur">
+</p>
 
 StayBlur is a Manifest V3 browser extension that lets you select elements on a webpage and obscure them — with the important difference that the change **stays there after a page reload**.
 
 Built for live demos and presentations where you want sensitive or distracting content hidden without changing the website itself.
+
+## Identity
+
+StayBlur's visual identity is built around a **protected browser window + lock** and a blue → indigo → violet gradient.
+
+The interaction language deliberately separates actions:
+
+- **Blue:** StayBlur / selection mode
+- **Red:** `Termina selezione` — exits the active selection mode
+- **Red outline:** destructive removal actions such as deleting saved obscurations
+- **Blue outline:** focuses a saved rule's corresponding element on the page
+
+Brand source files live in [`assets/branding`](assets/branding/).
 
 ## V1.0.0
 
@@ -47,10 +68,12 @@ The checks cover TypeScript compilation, unit tests and extension manifest valid
 extension/
   background/       Manifest V3 service worker
   content/          Selection, matching, rendering and page integration
+  icons/            StayBlur extension identity assets
   popup/            Extension UI
 src/core/           TypeScript domain, storage and matcher modules
 tests/              Unit and integration-oriented tests
 docs/               Manual validation and performance notes
+assets/branding/    Canonical StayBlur brand assets
 ```
 
 ## Safety model
