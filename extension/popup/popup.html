@@ -23,10 +23,10 @@
         <label for="intensity">Intensità <output id="intensityValue">60%</output></label>
         <input id="intensity" type="range" min="0" max="100" step="5" value="60">
       </div>
-      <button id="select" class="primary" type="button" aria-pressed="false">Seleziona elementi</button>
+      <button id="select" class="primary" type="button">Seleziona elementi</button>
+      <p id="selectionHelp" class="hint">Clicca “Seleziona elementi”, poi clicca tutti gli elementi che vuoi oscurare. <strong>Per terminare la selezione premi ESC sulla tastiera.</strong></p>
       <button id="toggleAll" class="secondary" type="button">Disattiva tutti gli oscuramenti</button>
       <button id="deleteAll" class="danger-outline" type="button">Elimina tutti gli oscuramenti</button>
-      <p class="hint">“Seleziona elementi” resta attivo finché non lo ripremi. Clicca una regola sotto per evidenziare il relativo elemento nella pagina.</p>
     </section>
     <section class="rules-section">
       <div class="section-title"><h2>Elementi oscurati in questa pagina</h2><span id="ruleCount" class="count">0</span></div>
