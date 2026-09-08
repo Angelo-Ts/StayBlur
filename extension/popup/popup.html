@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>progettoBlur</title>
+  <title>StayBlur</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
     <header class="header">
       <div>
-        <h1>progettoBlur</h1>
-        <p class="subtitle">Gestione degli elementi oscurati</p>
+        <h1>StayBlur <span id="version" class="version">v1.0.0</span></h1>
+        <p class="subtitle">Oscura elementi web e mantienili oscurati anche dopo il refresh</p>
       </div>
       <button id="close" class="icon-button" type="button" title="Chiudi">×</button>
     </header>
@@ -26,7 +26,7 @@
       <button id="select" class="primary" type="button">Seleziona elemento</button>
       <button id="toggleAll" class="secondary" type="button">Disattiva tutti gli oscuramenti</button>
       <button id="deleteAll" class="danger-outline" type="button">Elimina tutti gli oscuramenti</button>
-      <p class="hint">Il pulsante “Disattiva/Riabilita” mantiene le regole salvate e sospende o ripristina gli effetti. “Elimina” cancella definitivamente le regole.</p>
+      <p class="hint">“Disattiva” mantiene le regole salvate e sospende gli effetti. “Elimina” cancella definitivamente le regole.</p>
     </section>
     <section class="rules-section">
       <div class="section-title"><h2>Elementi oscurati in questa pagina</h2><span id="ruleCount" class="count">0</span></div>
@@ -34,6 +34,7 @@
       <p id="empty" class="empty">Nessun elemento oscurato in questa pagina.</p>
     </section>
     <p id="status" class="status" role="status"></p>
+    <footer class="footer">StayBlur <span aria-hidden="true">·</span> <span id="footerVersion">v1.0.0</span></footer>
   </main>
   <script src="popup.js"></script>
 </body>
