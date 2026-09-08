@@ -19,11 +19,23 @@ const safeDivide = (numerator: number, denominator: number): number => denominat
 
 const jaccard = (a: string[], b: string[]): number => {
   if (a.length === 0 || b.length === 0) return 0;
-  const as = new Set(a);
-  const bs = new Set(b);
-  const intersection = [...as].filter((value) => bs.has(value)).length;
-  const union = new Set([...as, ...bs]).size;
+  const [smaller, larger] = a.length <= b.length ? [a, b] : [b, a];
+  const largerSet = new Set(larger);
+  const smallerSet = new Set(smaller);
+  let intersection = 0;
+  for (const value of smallerSet) if (largerSet.has(value)) intersection += 1;
+  const union = largerSet.size + smallerSet.size - intersection;
   return safeDivide(intersection, union);
+};
+
+const semanticMapCache = new WeakMap<object, Map<string, string>>();
+
+const getSemanticMap = (owner: object, attributes: CandidateSnapshot['semanticAttributes']): Map<string, string> => {
+  const cached = semanticMapCache.get(owner);
+  if (cached) return cached;
+  const map = new Map(attributes.map((attr) => [`${attr.name}:${attr.valueKind}`, attr.value]));
+  semanticMapCache.set(owner, map);
+  return map;
 };
 
 const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
@@ -33,7 +45,7 @@ const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) =
 
 const scoreSemanticAttributes = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
   if (fingerprint.semanticAttributes.length === 0 || candidate.semanticAttributes.length === 0) return { score: 0, available: false };
-  const candidateMap = new Map(candidate.semanticAttributes.map((attr) => [`${attr.name}:${attr.valueKind}`, attr.value]));
+  const candidateMap = getSemanticMap(candidate, candidate.semanticAttributes);
   let numerator = 0;
   let denominator = 0;
   for (const attr of fingerprint.semanticAttributes) {
@@ -149,7 +161,8 @@ const compareCandidateScore = (left: CandidateScore, right: CandidateScore): num
   const leftSemantic = left.breakdown.semanticAttributes.score;
   const rightSemantic = right.breakdown.semanticAttributes.score;
   if (leftSemantic !== rightSemantic) return rightSemantic - leftSemantic;
-  return left.candidateId.localeCompare(right.candidateId);
+  if (left.candidateId === right.candidateId) return 0;
+  return left.candidateId < right.candidateId ? -1 : 1;
 };
 
 export const rankCandidates = ({ rule, candidates, minCategoryContribution }: ScoringInput): RankedCandidates => {

@@ -9,9 +9,9 @@
 <body>
   <main>
     <header class="header">
-      <div>
-        <h1>StayBlur <span id="version" class="version">v1.0.0</span></h1>
-        <p class="subtitle">Oscura elementi web e mantienili oscurati anche dopo il refresh</p>
+      <div class="brand">
+        <img class="brand-mark" src="../icons/stayblur-icon.svg" alt="">
+        <div><h1>StayBlur <span id="version" class="version">v1.0.0</span></h1><p class="subtitle">Oscura elementi web e mantienili oscurati anche dopo il refresh</p></div>
       </div>
       <button id="close" class="icon-button" type="button" title="Chiudi">×</button>
     </header>
@@ -23,10 +23,10 @@
         <label for="intensity">Intensità <output id="intensityValue">60%</output></label>
         <input id="intensity" type="range" min="0" max="100" step="5" value="60">
       </div>
-      <button id="select" class="primary" type="button">Seleziona elemento</button>
+      <button id="select" class="primary" type="button">Seleziona elementi</button>
+      <p id="selectionHelp" class="hint">Clicca “Seleziona elementi”, poi clicca tutti gli elementi che vuoi oscurare. <strong>Per terminare la selezione premi ESC sulla tastiera.</strong></p>
       <button id="toggleAll" class="secondary" type="button">Disattiva tutti gli oscuramenti</button>
       <button id="deleteAll" class="danger-outline" type="button">Elimina tutti gli oscuramenti</button>
-      <p class="hint">“Disattiva” mantiene le regole salvate e sospende gli effetti. “Elimina” cancella definitivamente le regole.</p>
     </section>
     <section class="rules-section">
       <div class="section-title"><h2>Elementi oscurati in questa pagina</h2><span id="ruleCount" class="count">0</span></div>
