@@ -151,7 +151,8 @@ const compareCandidateScore = (left: CandidateScore, right: CandidateScore): num
   const leftSemantic = left.breakdown.semanticAttributes.score;
   const rightSemantic = right.breakdown.semanticAttributes.score;
   if (leftSemantic !== rightSemantic) return rightSemantic - leftSemantic;
-  return left.candidateId.localeCompare(right.candidateId);
+  if (left.candidateId === right.candidateId) return 0;
+  return left.candidateId < right.candidateId ? -1 : 1;
 };
 
 export const rankCandidates = ({ rule, candidates, minCategoryContribution }: ScoringInput): RankedCandidates => {
