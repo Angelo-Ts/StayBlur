@@ -108,7 +108,6 @@
     rulesLoad = null;
   }
 
-  // Storage writes from rapid successive selections must be serialized.
   let saveRuleQueue = Promise.resolve();
   function saveRule(rule) {
     const operation = saveRuleQueue.then(async () => {
@@ -425,7 +424,6 @@
   let retryTimer = null;
   let evaluating = false;
   let evaluateQueued = false;
-  let selectionClickQueue = Promise.resolve();
   const selectionCreated = new Set();
   const retryCounts = new Map();
   const pageSuppressed = new Set();
@@ -467,26 +465,32 @@
     event.stopPropagation();
     event.stopImmediatePropagation();
     if (element.closest(`[${ATTR}]`)) return;
-    selectionClickQueue = selectionClickQueue.then(async () => {
-      if (!selection) return;
-      clearRuleFocus();
-      const c = context();
-      const now = new Date().toISOString();
-      const settings = await getSettings();
-      const allowedEffects = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']);
-      const effect = allowedEffects.has(settings.selectionEffect) ? settings.selectionEffect : 'blur';
-      const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60)));
-      const rule = {
-        ruleId: `rule-${crypto.randomUUID()}`,
-        scope: 'page', domain: c.domain, path: c.path, url: location.href,
-        frameKey: frameContextKey() || 'unknown', enabled: true, status: 'active', effect, intensity,
-        createdAt: now, updatedAt: now, fingerprint: await fingerprint(element)
-      };
-      await saveRule(rule);
-      selectionCreated.add(rule.ruleId);
-      apply(element, rule);
-      retryCounts.delete(rule.ruleId);
-    }).catch(() => {});
+    if (!selection) return;
+    clearRuleFocus();
+    const c = context();
+    const now = new Date().toISOString();
+    const settings = settingsCache || { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 };
+    const allowedEffects = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']);
+    const effect = allowedEffects.has(settings.selectionEffect) ? settings.selectionEffect : 'blur';
+    const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60)));
+    const rule = {
+      ruleId: `rule-${crypto.randomUUID()}`,
+      scope: 'page', domain: c.domain, path: c.path, url: location.href,
+      frameKey: frameContextKey() || 'unknown', enabled: true, status: 'active', effect, intensity,
+      createdAt: now, updatedAt: now, fingerprint: null
+    };
+    selectionCreated.add(rule.ruleId);
+    apply(element, rule);
+    retryCounts.delete(rule.ruleId);
+    void (async () => {
+      try {
+        rule.fingerprint = await fingerprint(element);
+        await saveRule(rule);
+      } catch (_) {
+        selectionCreated.delete(rule.ruleId);
+        removeRule(rule.ruleId);
+      }
+    })();
   }
 
   function startSelection() {
@@ -523,8 +527,6 @@
   }
 
   async function evaluateRule(rule) {
-    // A rule created moments ago by multiselection is already known-good on this page.
-    // Do not let an asynchronous global re-evaluation remove it between two clicks.
     if (selection && selectionCreated.has(rule.ruleId) && applied.has(rule.ruleId)) return { status: 'active', confidence: rule.lastConfidence || 1 };
     if (!ruleAppliesToCurrentFrame(rule)) { removeRule(rule.ruleId); return { status: 'notApplicable', confidence: 0 }; }
     if (!rule.enabled || !(await getSettings()).extensionEnabled) { removeRule(rule.ruleId); return { status: 'disabled', confidence: 0 }; }
@@ -661,8 +663,6 @@
     }
     if (Object.keys(changes).some(key => key.startsWith(RULE_PREFIX) || key.startsWith('idx:'))) {
       invalidateRulesCache();
-      // While multiselection is active, do not start a global matcher pass.
-      // The selected elements are already applied and are protected by selectionCreated.
       if (!selection) queueEvaluate(0);
     }
   });
