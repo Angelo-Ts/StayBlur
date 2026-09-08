@@ -1,0 +1,1 @@
+Raster icon generation is intentionally kept as a release packaging step. Source artwork: `stayblur-icon.svg`.
