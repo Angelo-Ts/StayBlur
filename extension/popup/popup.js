@@ -1,6 +1,10 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  const manifest = chrome.runtime.getManifest();
+  document.title = manifest.name || 'StayBlur';
+  if ($('version')) $('version').textContent = `v${manifest.version}`;
+  if ($('footerVersion')) $('footerVersion').textContent = `v${manifest.version}`;
   const status = text => { $('status').textContent = text || ''; $('status').classList.toggle('error', Boolean(text && /errore|impossibile|non permette/i.test(text))); };
   async function send(type, extra = {}) { return chrome.runtime.sendMessage({ type, ...extra }); }
   const effectNames = { blur: 'Blur', strongBlur: 'Blur forte', pixelate: 'Pixelatura', blackout: 'Oscura', hide: 'Nascondi' };
