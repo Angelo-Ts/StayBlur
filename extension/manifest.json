@@ -6,17 +6,6 @@
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": {"service_worker": "background/service-worker.js", "type": "module"},
-  "action": {
-    "default_title": "StayBlur",
-    "default_popup": "popup/popup.html",
-    "default_icon": {
-      "16": "icons/stayblur-icon.svg",
-      "32": "icons/stayblur-icon.svg",
-      "48": "icons/stayblur-icon.svg"
-    }
-  },
-  "icons": {
-    "128": "icons/stayblur-icon.svg"
-  },
+  "action": {"default_title": "StayBlur", "default_popup": "popup/popup.html"},
   "content_scripts": [{"matches": ["<all_urls>"], "js": ["content/selection-style.js", "content/content-script.js", "content/shadow-style.js"], "run_at": "document_idle", "all_frames": true}]
 }
