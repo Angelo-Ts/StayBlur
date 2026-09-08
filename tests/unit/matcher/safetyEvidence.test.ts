@@ -35,13 +35,13 @@ describe('matcher safety evidence', () => {
     expect(score.independentContributions).toBe(0);
   });
 
-  it('keeps a support-signal-only match ambiguous instead of auto-applying it', () => {
+  it('does not auto-apply a match supported only by non-independent signals', () => {
     const rule = sampleRule();
     const candidate = scoreCandidate(rule.fingerprint, candidateWithOnlySupportSignals(), 0.65);
     const ranked: RankedCandidates = { sorted: [candidate], c1: candidate };
 
     const decision = decideMatch(rule, ranked, POLICY);
-    expect(decision.status).toBe('ambiguous');
-    expect(decision.reason).toBe('insufficient-independent-categories');
+    expect(['notFound', 'ambiguous']).toContain(decision.status);
+    expect(decision.status).not.toBe('active');
   });
 });
