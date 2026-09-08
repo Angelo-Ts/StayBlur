@@ -1,14 +1,14 @@
 <p align="center">
   <img src="assets/branding/stayblur-icon-source.svg" width="140" alt="StayBlur icon">
+</br>
+  <img src="assets/branding/stayblur-wordmark.svg" width="420" alt="StayBlur">
 </p>
 
-<h1 align="center">StayBlur</h1>
+
 
 <p align="center"><strong>Persistent blur for the web.</strong><br>Hide what you don't want to show. Keep it hidden until you decide otherwise.</p>
 
-<p align="center">
-  <img src="assets/branding/stayblur-wordmark.svg" width="420" alt="StayBlur">
-</p>
+<hr/>
 
 StayBlur is a Manifest V3 browser extension that lets you select elements on a webpage and obscure them — with the important difference that the change **stays there after a page reload**.
 
