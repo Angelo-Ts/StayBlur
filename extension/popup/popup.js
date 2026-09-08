@@ -31,10 +31,10 @@
     const [r, stored] = await Promise.all([send('POPUP_GET_STATE'), chrome.storage.local.get({ 'pb:settings': { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60 } })]);
     if (!r?.ok) return status(r?.error || 'Impossibile leggere lo stato della pagina.'); const settings = stored['pb:settings'] || {};
     $('enabled').checked = r.extensionEnabled !== false; $('effect').value = settings.selectionEffect || 'blur'; $('intensity').value = String(settings.selectionIntensity ?? 60); $('intensityValue').textContent = `${$('intensity').value}%`; renderRules(r.rules);
-    const allActive = (r.rules || []).length > 0 && r.rules.every(rule => rule.enabled !== false);
-    const allDisabled = (r.rules || []).length > 0 && r.rules.every(rule => rule.enabled === false);
+    const rules = r.rules || [];
+    const allDisabled = rules.length > 0 && rules.every(rule => rule.enabled === false);
     const toggleAll = $('toggleAll');
-    if (toggleAll) { toggleAll.disabled = !(allActive || allDisabled); toggleAll.textContent = allActive ? 'Disattiva tutti gli oscuramenti' : allDisabled ? 'Riabilita tutti gli oscuramenti' : 'Disattiva tutti gli oscuramenti'; }
+    if (toggleAll) { toggleAll.disabled = rules.length === 0; toggleAll.textContent = allDisabled ? 'Riabilita tutti gli oscuramenti' : 'Disattiva tutti gli oscuramenti'; }
   }
   $('close').onclick = () => window.close();
   $('enabled').onchange = async e => { const r = await send('POPUP_SET_EXTENSION_ENABLED', { enabled: e.target.checked }); if (!r?.ok) status(r?.error || 'Impossibile modificare lo stato.'); else { await saveSelectionPreferences(); status(e.target.checked ? 'Estensione attivata.' : 'Estensione disattivata.'); await refresh(); } };
@@ -45,12 +45,10 @@
     const current = await send('POPUP_GET_STATE'); if (!current?.ok) return status(current?.error || 'Impossibile leggere le regole.');
     const rules = current.rules || [];
     if (!rules.length) return status('Non ci sono regole salvate.');
-    const allActive = rules.every(rule => rule.enabled !== false);
     const allDisabled = rules.every(rule => rule.enabled === false);
-    if (!allActive && !allDisabled) return status('Le regole hanno stati diversi: gestiscile singolarmente.');
-    const type = allActive ? 'POPUP_DISABLE_ALL_RULES' : 'POPUP_ENABLE_ALL_RULES';
+    const type = allDisabled ? 'POPUP_ENABLE_ALL_RULES' : 'POPUP_DISABLE_ALL_RULES';
     const r = await send(type);
-    if (r?.ok) { status(allActive ? 'Tutti gli oscuramenti sono stati disattivati.' : 'Tutti gli oscuramenti sono stati riabilitati.'); await refresh(); } else status(r?.error || 'Impossibile modificare gli oscuramenti.');
+    if (r?.ok) { status(allDisabled ? 'Tutti gli oscuramenti sono stati riabilitati.' : 'Tutti gli oscuramenti sono stati disattivati.'); await refresh(); } else status(r?.error || 'Impossibile modificare gli oscuramenti.');
   };
   $('deleteAll').onclick = async () => { if (!confirm('Eliminare TUTTI gli oscuramenti salvati? Questa operazione non può essere annullata.')) return; const r = await send('POPUP_DELETE_ALL_RULES'); if (r?.ok) { status('Tutti gli oscuramenti sono stati eliminati.'); await refresh(); } else status(r?.error || 'Impossibile eliminare gli oscuramenti.'); };
   refresh();
