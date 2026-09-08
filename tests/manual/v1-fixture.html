@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>progettoBlur — V1 manual fixture</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #18202a; background: #f5f7fa; }
+    body { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    section, .card, .panel { background: white; border: 1px solid #d9dee7; border-radius: 12px; padding: 18px; margin: 16px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 14px; }
+    button, input, textarea, select { font: inherit; padding: 8px; margin: 4px 0; }
+    img { max-width: 100%; border-radius: 8px; }
+    .nested { padding: 8px; border: 1px dashed #aab3c2; }
+    .dynamic { min-height: 48px; }
+    .similar { border: 1px solid #c7ceda; padding: 12px; border-radius: 8px; }
+    nav button { margin-right: 6px; }
+    .small { color: #5c6675; font-size: .9rem; }
+    code { background: #eef1f5; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header class="panel">
+    <h1 id="fixture-title">progettoBlur V1 — test manuale</h1>
+    <p>Questa pagina contiene casi controllati per verificare selezione, effetti, persistenza, matching e DOM dinamico.</p>
+    <p class="small">Aprila in Edge dopo aver caricato l'estensione. Usa il popup di progettoBlur per attivare la modalità selezione.</p>
+  </header>
+
+  <section id="basic-elements">
+    <h2>1. Elementi base</h2>
+    <div class="grid">
+      <article class="card" id="stable-card">
+        <h3>Card con ID stabile</h3>
+        <p id="stable-text">Questo testo deve poter essere oscurato e ritrovato dopo il refresh.</p>
+        <img id="test-image" alt="Immagine di test" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='180'%3E%3Crect width='500' height='180' fill='%23dfe6f0'/%3E%3Ctext x='250' y='100' text-anchor='middle' font-size='28' fill='%2318202a'%3EImage test%3C/text%3E%3C/svg%3E">
+      </article>
+      <article class="card">
+        <h3>Form controls</h3>
+        <label>Nome <input id="test-input" value="Dato riservato"></label><br>
+        <label>Note <textarea id="test-textarea">Testo da oscurare</textarea></label><br>
+        <label>Tipo <select id="test-select"><option>Opzione A</option><option>Opzione B</option></select></label>
+        <button id="test-button" type="button" onclick="document.getElementById('button-result').textContent='CLICK OK'">Pulsante test</button>
+        <span id="button-result" class="small">non cliccato</span>
+      </article>
+    </div>
+    <div class="card">
+      <h3>Container annidato</h3>
+      <div class="nested"><div class="nested"><div class="nested"><p id="deep-target">Elemento profondamente annidato</p></div></div></div>
+    </div>
+  </section>
+
+  <section id="media-table">
+    <h2>2. Media e tabella</h2>
+    <video id="test-video" controls width="420" preload="metadata" src="data:video/mp4;base64,AAAA"></video>
+    <table style="width:100%; margin-top:14px; border-collapse:collapse">
+      <thead><tr><th style="border:1px solid #ccc;padding:8px">Campo</th><th style="border:1px solid #ccc;padding:8px">Valore</th></tr></thead>
+      <tbody><tr><td style="border:1px solid #ccc;padding:8px">Email</td><td id="table-sensitive" style="border:1px solid #ccc;padding:8px">demo@example.test</td></tr></tbody>
+    </table>
+  </section>
+
+  <section id="similar-elements">
+    <h2>3. Matching prudente</h2>
+    <p class="small">Oscura il primo elemento. Dopo il refresh verifica che venga ritrovato correttamente e che non venga oscurato un fratello simile.</p>
+    <div class="grid">
+      <div class="similar" data-role="profile-card"><strong>Profilo A</strong><p>Contenuto simile</p></div>
+      <div class="similar" data-role="profile-card"><strong>Profilo B</strong><p>Contenuto simile</p></div>
+      <div class="similar" data-role="profile-card"><strong>Profilo C</strong><p>Contenuto simile</p></div>
+    </div>
+  </section>
+
+  <section id="dynamic-section">
+    <h2>4. DOM dinamico</h2>
+    <p>Un elemento viene aggiunto dopo il caricamento. Attendi circa 2 secondi.</p>
+    <div id="dynamic-target" class="dynamic">In attesa dell'elemento dinamico…</div>
+    <button type="button" id="recreate-dynamic">Rimuovi e ricrea elemento dinamico</button>
+  </section>
+
+  <section id="spa-section">
+    <h2>5. Navigazione SPA simulata</h2>
+    <nav>
+      <button type="button" data-view="home">Home</button>
+      <button type="button" data-view="settings">Impostazioni</button>
+      <button type="button" data-view="profile">Profilo</button>
+    </nav>
+    <div id="spa-view" class="card">Vista Home</div>
+  </section>
+
+  <section id="shadow-section">
+    <h2>6. Shadow DOM open</h2>
+    <div id="shadow-host"></div>
+    <p class="small">Il contenuto del componente è creato in un Shadow Root open.</p>
+  </section>
+
+  <section id="iframe-section">
+    <h2>7. iframe same-origin</h2>
+    <iframe id="same-origin-frame" title="Fixture iframe" style="width:100%;height:170px;border:1px solid #ccd3de;border-radius:8px"></iframe>
+  </section>
+
+  <script>
+    const dynamicMarkup = '<div id="dynamic-sensitive" class="card"><strong>Elemento dinamico</strong><p>Questo contenuto viene creato dopo il caricamento.</p></div>';
+    setTimeout(() => { document.getElementById('dynamic-target').innerHTML = dynamicMarkup; }, 2000);
+
+    document.getElementById('recreate-dynamic').addEventListener('click', () => {
+      const target = document.getElementById('dynamic-target');
+      target.innerHTML = '';
+      setTimeout(() => { target.innerHTML = dynamicMarkup; }, 300);
+    });
+
+    document.querySelectorAll('[data-view]').forEach(button => {
+      button.addEventListener('click', () => {
+        const view = button.dataset.view;
+        document.getElementById('spa-view').innerHTML = '<h3>' + view + '</h3><p id="spa-sensitive">Contenuto della vista ' + view + '.</p>';
+        history.pushState({ view }, '', '#' + view);
+      });
+    });
+
+    const shadowHost = document.getElementById('shadow-host');
+    const shadow = shadowHost.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<style>:host{display:block}.box{padding:14px;border:2px solid #9aa5b5;border-radius:8px}</style><div class="box" id="shadow-target"><strong>Elemento Shadow DOM</strong><p>Seleziona questo elemento per testare lo Shadow DOM open.</p></div>';
+
+    const frame = document.getElementById('same-origin-frame');
+    frame.srcdoc = '<!doctype html><html><body style="font-family:system-ui;padding:12px"><h3>Iframe same-origin</h3><p id="iframe-target">Elemento dentro iframe same-origin</p><button onclick="document.body.dataset.clicked=1">Pulsante iframe</button></body></html>';
+  </script>
+</body>
+</html>
