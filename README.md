@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/stayblur-icon.svg" width="140" alt="StayBlur icon">
+  <img src="assets/branding/stayblur-icon-source.svg" width="140" alt="StayBlur icon">
 </p>
 
 <h1 align="center">StayBlur</h1>
