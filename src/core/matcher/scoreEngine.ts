@@ -19,11 +19,12 @@ const safeDivide = (numerator: number, denominator: number): number => denominat
 
 const jaccard = (a: string[], b: string[]): number => {
   if (a.length === 0 || b.length === 0) return 0;
-  const as = new Set(a);
-  const bs = new Set(b);
-  const intersection = [...as].filter((value) => bs.has(value)).length;
-  const union = new Set([...as, ...bs]).size;
-  return safeDivide(intersection, union);
+  const [smaller, larger] = a.length <= b.length ? [a, b] : [b, a];
+  const largerSet = new Set(larger);
+  const smallerSet = new Set(smaller);
+  let intersection = 0;
+  for (const value of smallerSet) if (largerSet.has(value)) intersection += 1;
+  return safeDivide(intersection, new Set([...largerSet, ...smallerSet]).size);
 };
 
 const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
