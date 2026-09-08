@@ -28,6 +28,16 @@ const jaccard = (a: string[], b: string[]): number => {
   return safeDivide(intersection, union);
 };
 
+const semanticMapCache = new WeakMap<object, Map<string, string>>();
+
+const getSemanticMap = (owner: object, attributes: Fingerprint['semanticAttributes']): Map<string, string> => {
+  const cached = semanticMapCache.get(owner);
+  if (cached) return cached;
+  const map = new Map(attributes.map((attr) => [`${attr.name}:${attr.valueKind}`, attr.value]));
+  semanticMapCache.set(owner, map);
+  return map;
+};
+
 const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
   if (!fingerprint.stableId || !candidate.id) return { score: 0, available: false };
   return { score: candidate.id === fingerprint.stableId.value ? 1 : 0, available: true };
@@ -35,7 +45,7 @@ const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) =
 
 const scoreSemanticAttributes = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
   if (fingerprint.semanticAttributes.length === 0 || candidate.semanticAttributes.length === 0) return { score: 0, available: false };
-  const candidateMap = new Map(candidate.semanticAttributes.map((attr) => [`${attr.name}:${attr.valueKind}`, attr.value]));
+  const candidateMap = getSemanticMap(candidate, candidate.semanticAttributes);
   let numerator = 0;
   let denominator = 0;
   for (const attr of fingerprint.semanticAttributes) {
