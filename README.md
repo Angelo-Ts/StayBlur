@@ -1,150 +1,73 @@
-# progettoBlur
+# StayBlur
 
-> **Persistent, safety-first element obscuring for Chromium browsers.**
+**Persistent blur for the web.**
 
-progettoBlur is a Manifest V3 browser extension for temporarily hiding sensitive or distracting page elements during live presentations, demos, screen sharing, and everyday browsing.
+StayBlur is a Manifest V3 browser extension that lets you select elements on a webpage and obscure them — with the important difference that the change **stays there after a page reload**.
 
-Select an element on a web page, choose an obscuring effect, and progettoBlur remembers the rule locally. The effect is restored after page refreshes and browser restarts until you explicitly disable or delete the rule.
+Built for live demos and presentations where you want sensitive or distracting content hidden without changing the website itself.
 
 ## V1.0.0
 
-The V1 baseline is validated on **Microsoft Edge on Windows**.
+- Select any visible page element manually
+- Blur, strong blur, pixelation, blackout and hide effects
+- Adjustable blur intensity
+- Rules scoped to a page or an entire site
+- Rules persist across refreshes and browser restarts
+- Works with dynamic DOM / SPA pages
+- Same-origin iframe support
+- Open Shadow DOM support
+- Safety-first matching: uncertain matches are not applied automatically
+- Individual or global enable/disable
+- Explicit rule deletion
+- Local-only storage
+- Microsoft Edge / Windows first, with Chromium portability in mind
 
-### Highlights
+## Install locally on Microsoft Edge
 
-- Manual element selection directly on the page.
-- Persistent rules stored locally with `chrome.storage.local`.
-- Rules can target a single page or an entire site/domain.
-- Automatic re-application after refresh and browser restart.
-- SPA/navigation and dynamic-DOM handling.
-- Same-origin iframe support.
-- Open Shadow DOM traversal.
-- Safety-first matching designed to prefer false negatives over false positives.
-- Multiple obscuring effects:
-  - Blur
-  - Strong blur
-  - Pixelate (experimental)
-  - Blackout
-  - Hide
-- Adjustable blur intensity.
-- Individual rule enable/disable.
-- Global enable/disable/reactivation.
-- Explicit rule deletion.
-- No backend and no external transmission of saved rule data.
-
-## Safety model
-
-A saved rule is **not** re-applied merely because a CSS selector happens to match an element.
-
-The matcher combines several identifying signals such as stable IDs/classes, semantic attributes, text fingerprints, ancestor/structure context, geometry and selector information. Automatic application is gated by confidence, independent identifying evidence, and ambiguity checks.
-
-The core safety principle is:
-
-> **False positives are unacceptable; false negatives are preferable.**
-
-If the extension cannot identify an element with sufficient confidence, it leaves the page unchanged.
-
-## Known V1 limitations
-
-These are intentionally outside the V1 acceptance gate and are planned for later hardening:
-
-- Blackout rendering can be imperfect on some text elements.
-- Blackout rendering inside some open Shadow DOM content can be visually incorrect.
-- Pixelation is experimental.
-- Complex visual content such as canvas/video sub-content may require specialized rendering.
-- Closed Shadow DOM is not currently targeted.
-- The initial supported platform is Edge/Windows; broader Chromium and macOS validation comes later.
-
-## Installation in Microsoft Edge (developer mode)
-
-1. Clone the repository.
+1. Download the `extension` folder from the repository or from the V1.0.0 release package.
 2. Open `edge://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
-5. Select the repository's `extension/` directory.
-6. Open a normal `http://` or `https://` page and click the progettoBlur toolbar icon.
+5. Select the `extension` folder.
 
-> Browser-internal pages such as `edge://...` cannot be modified by normal extensions and are not supported test targets.
+After changing the extension source, use **Reload** in `edge://extensions` to load the updated version.
 
 ## Development
 
-Requirements:
-
-- Node.js
-- npm
-- Microsoft Edge (for the primary manual validation)
-
-Install dependencies:
-
 ```bash
 npm ci
-```
-
-Run the complete automated check:
-
-```bash
 npm run check
 ```
 
-This runs:
-
-- TypeScript build/type checking
-- Vitest unit tests
-- Manifest/extension validation
-
-Run tests only:
-
-```bash
-npm test
-```
+The checks cover TypeScript compilation, unit tests and extension manifest validation.
 
 ## Project structure
 
 ```text
-extension/     Manifest V3 extension shipped to the browser
-src/           TypeScript core models, storage and matcher logic
-tests/         Automated tests and manual V1 fixture
-scripts/       Validation/build support scripts
-docs/          Focused testing and engineering notes
-.github/       CI configuration
+extension/
+  background/       Manifest V3 service worker
+  content/          Selection, matching, rendering and page integration
+  popup/            Extension UI
+src/core/           TypeScript domain, storage and matcher modules
+tests/              Unit and integration-oriented tests
+docs/               Manual validation and performance notes
 ```
 
-## Release process
+## Safety model
 
-Releases use semantic version tags such as `v1.0.0`.
+StayBlur prefers a missed match over a wrong match. A saved rule is only re-applied automatically when the matcher has enough independent evidence that the current element is the intended one. If confidence is insufficient, the rule remains saved but is not applied to a potentially wrong element.
 
-For V1, the intended sequence is:
+## Known V1 limitations
 
-1. Keep `main` green and validated.
-2. Align the extension/package version with the release version.
-3. Create a Git tag such as `v1.0.0` from `main`.
-4. Create a GitHub Release from that tag.
-5. Attach a packaged extension archive when a distributable build is required.
+- Blackout can be visually imperfect on some text elements.
+- Blackout inside some Shadow DOM content still needs rendering hardening.
+- Pixelation is experimental.
+- Complex canvas/video content may need specialized handling.
+- V1 validation targets Microsoft Edge on Windows.
 
-GitHub also provides generated release notes when creating a release from the **Releases** page.
+## What's next
 
-## Roadmap
-
-### V1.1 / hardening
-
-- Consolidate runtime/core matcher logic where safe.
-- Improve candidate discovery and fingerprint performance on large pages.
-- Harden navigation, DOM mutation and frame lifecycle handling.
-- Expand integration and adversarial tests.
-- Improve blackout rendering and replace/redesign pixelation.
-- Improve packaging and clean-install validation across Chromium browsers.
-
-### Future
-
-- Chrome/Brave/Opera distribution.
-- macOS validation.
-- Optional rule editing and richer scope controls.
-- More specialized canvas/video handling.
-- Additional advanced obscuring rules.
-
-## Privacy
-
-Saved rules are local browser data. V1 does not use a backend or intentionally transmit page URLs, page content, images, text, or element information to an external server.
+V1.1 will focus on matcher consolidation, performance, broader Chromium validation, and hardening the known rendering limitations.
 
 ## License
 
