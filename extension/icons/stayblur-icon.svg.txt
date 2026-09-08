@@ -1,0 +1,1 @@
+Canonical source artwork is `stayblur-icon.svg`. PNG derivatives can be generated locally from the same source for browser stores that require raster icons.
