@@ -24,7 +24,8 @@ const jaccard = (a: string[], b: string[]): number => {
   const smallerSet = new Set(smaller);
   let intersection = 0;
   for (const value of smallerSet) if (largerSet.has(value)) intersection += 1;
-  return safeDivide(intersection, new Set([...largerSet, ...smallerSet]).size);
+  const union = largerSet.size + smallerSet.size - intersection;
+  return safeDivide(intersection, union);
 };
 
 const scoreStableId = (fingerprint: Fingerprint, candidate: CandidateSnapshot) => {
