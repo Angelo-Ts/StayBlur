@@ -47,14 +47,19 @@
       const actions = document.createElement('div');
       actions.className = 'rule-actions';
 
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.textContent = 'Togli dalla pagina';
-      remove.title = 'Toglie temporaneamente questo effetto dalla pagina corrente. La regola resta salvata.';
-      remove.onclick = async () => {
-        const r = await send('POPUP_REMOVE_BLUR_PAGE_ONLY', { ruleId: rule.ruleId });
-        if (r?.ok) status('Effetto tolto dalla pagina. La regola resta salvata.');
-        else status(r?.error || 'Impossibile togliere l’effetto.');
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.textContent = rule.enabled === false ? 'Riabilita' : 'Disattiva';
+      toggle.title = rule.enabled === false
+        ? 'Riabilita questa regola e riapplica l’oscuramento quando possibile.'
+        : 'Disattiva questa regola. La regola resta salvata e può essere riabilitata.';
+      toggle.onclick = async () => {
+        const type = rule.enabled === false ? 'POPUP_ENABLE_RULE' : 'POPUP_DISABLE_RULE';
+        const r = await send(type, { ruleId: rule.ruleId });
+        if (r?.ok) {
+          status(rule.enabled === false ? 'Regola riabilitata.' : 'Regola disattivata.');
+          await refresh();
+        } else status(r?.error || 'Impossibile modificare la regola.');
       };
 
       const del = document.createElement('button');
@@ -69,7 +74,7 @@
         else status(r?.error || 'Impossibile eliminare l’oscuramento.');
       };
 
-      actions.append(remove, del);
+      actions.append(toggle, del);
       row.append(head, actions);
       root.appendChild(row);
     }
@@ -121,9 +126,13 @@
     else status(r?.error || 'Impossibile avviare la selezione.');
   };
   $('removeAll').onclick = async () => {
-    const r = await send('POPUP_REMOVE_ALL_EFFECTS_PAGE');
-    if (r?.ok) { status('Tutti gli effetti sono stati tolti dalla pagina. Le regole restano salvate.'); await refresh(); }
-    else status(r?.error || 'Impossibile togliere gli effetti.');
+    const current = await send('POPUP_GET_STATE');
+    if (!current?.ok) return status(current?.error || 'Impossibile leggere le regole.');
+    const activeRules = (current.rules || []).filter(rule => rule.enabled !== false);
+    if (!activeRules.length) return status('Non ci sono regole attive da disattivare.');
+    const results = await Promise.all(activeRules.map(rule => send('POPUP_DISABLE_RULE', { ruleId: rule.ruleId })));
+    if (results.every(r => r?.ok)) { status('Tutti gli oscuramenti sono stati disattivati. Le regole restano salvate.'); await refresh(); }
+    else status('Alcune regole non sono state disattivate.');
   };
   $('deleteAll').onclick = async () => {
     if (!confirm('Eliminare TUTTI gli oscuramenti salvati? Questa operazione non può essere annullata.')) return;
