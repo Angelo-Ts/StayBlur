@@ -30,7 +30,7 @@ const jaccard = (a: string[], b: string[]): number => {
 
 const semanticMapCache = new WeakMap<object, Map<string, string>>();
 
-const getSemanticMap = (owner: object, attributes: Fingerprint['semanticAttributes']): Map<string, string> => {
+const getSemanticMap = (owner: object, attributes: CandidateSnapshot['semanticAttributes']): Map<string, string> => {
   const cached = semanticMapCache.get(owner);
   if (cached) return cached;
   const map = new Map(attributes.map((attr) => [`${attr.name}:${attr.valueKind}`, attr.value]));
