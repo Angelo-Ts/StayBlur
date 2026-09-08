@@ -1,0 +1,14 @@
+{
+  "name": "progettoblur",
+  "version": "0.2.2",
+  "description": "Progetto per creare una estensione per blurrare i siti web",
+  "main": "index.js",
+  "directories": {"doc": "docs"},
+  "scripts": {"test": "vitest run", "test:watch": "vitest", "build": "tsc -p tsconfig.json --noEmit", "validate:extension": "node scripts/validate-extension.mjs", "check": "npm run build && npm test && npm run validate:extension"},
+  "repository": {"type": "git", "url": "http://localhost:26831/Angelo-Ts/progettoBlur"},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {"@types/node": "^26.4.1", "typescript": "^7.0.2", "vitest": "^5.0.0"}
+}

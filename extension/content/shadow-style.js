@@ -1,0 +1,50 @@
+(() => {
+  'use strict';
+
+  const STYLE_ID = 'pb-rule-style-blackout-fix';
+  const CSS = `.pb-effect-blackout{filter:brightness(0)!important;background:#000!important;color:#000!important;-webkit-text-fill-color:#000!important;text-shadow:none!important}`;
+  const knownRoots = new WeakSet();
+
+  function install(root) {
+    if (!root || typeof root.querySelector !== 'function') return;
+    if (root.querySelector(`#${STYLE_ID}`)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = CSS;
+    root.appendChild(style);
+  }
+
+  function registerRoot(root) {
+    if (!root || knownRoots.has(root)) return false;
+    knownRoots.add(root);
+    install(root);
+    return true;
+  }
+
+  function discoverOpenShadowRoots(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    registerRoot(root);
+    for (const host of root.querySelectorAll('*')) {
+      if (host.shadowRoot) discoverOpenShadowRoots(host.shadowRoot);
+    }
+  }
+
+  discoverOpenShadowRoots(document);
+
+  const observer = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      if (mutation.type !== 'childList') continue;
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.shadowRoot) discoverOpenShadowRoots(node.shadowRoot);
+        for (const host of node.querySelectorAll('*')) {
+          if (host.shadowRoot) discoverOpenShadowRoots(host.shadowRoot);
+        }
+      }
+    }
+  });
+
+  if (document.documentElement) {
+    observer.observe(document.documentElement, { subtree: true, childList: true });
+  }
+})();
