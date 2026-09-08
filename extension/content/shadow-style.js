@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const STYLE_ID = 'pb-rule-style';
-  const CSS = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:blur(8px) contrast(1.8)!important}.pb-effect-blackout{filter:brightness(0)!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}`;
+  const STYLE_ID = 'pb-rule-style-blackout-fix';
+  const CSS = `.pb-effect-blackout{filter:brightness(0)!important;text-shadow:none!important}`;
   const knownRoots = new WeakSet();
 
   function install(root) {
