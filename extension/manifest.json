@@ -5,39 +5,8 @@
   "description": "Persistent web element obscuring that stays applied after page reloads.",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],
-  "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
-  },
-  "icons": {
-    "16": "icons/stayblur-icon-128.png",
-    "32": "icons/stayblur-icon-128.png",
-    "48": "icons/stayblur-icon-128.png",
-    "128": "icons/stayblur-icon-128.png"
-  },
-  "action": {
-    "default_title": "StayBlur",
-    "default_popup": "popup/popup.html",
-    "default_icon": {
-      "16": "icons/stayblur-icon-128.png",
-      "32": "icons/stayblur-icon-128.png",
-      "48": "icons/stayblur-icon-128.png",
-      "128": "icons/stayblur-icon-128.png"
-    }
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": [
-        "content/selection-style.js",
-        "content/content-script.js",
-        "content/reapply-runtime.js",
-        "content/cleanup-runtime.js",
-        "content/focus-overlay.js",
-        "content/shadow-style.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true
-    }
-  ]
+  "background": {"service_worker": "background/service-worker.js", "type": "module"},
+  "icons": {"16":"icons/stayblur-icon-128.png","32":"icons/stayblur-icon-128.png","48":"icons/stayblur-icon-128.png","128":"icons/stayblur-icon-128.png"},
+  "action": {"default_title":"StayBlur","default_popup":"popup/popup.html","default_icon":{"16":"icons/stayblur-icon-128.png","32":"icons/stayblur-icon-128.png","48":"icons/stayblur-icon-128.png","128":"icons/stayblur-icon-128.png"}},
+  "content_scripts": [{"matches":["<all_urls>"],"js":["content/selection-style.js","content/content-script.js","content/reapply-runtime.js","content/cleanup-runtime.js","content/focus-overlay.js","content/shadow-style.js"],"run_at":"document_idle","all_frames":true}]
 }
