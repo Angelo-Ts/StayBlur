@@ -4,8 +4,6 @@
   <img src="assets/branding/stayblur-wordmark.svg" width="420" alt="StayBlur">
 </p>
 
-
-
 <p align="center"><strong>Persistent blur for the web.</strong><br>Hide what you don't want to show. Keep it hidden until you decide otherwise.</p>
 
 <hr/>
@@ -21,18 +19,18 @@ StayBlur's visual identity is built around a **protected browser window + lock**
 The interaction language deliberately separates actions:
 
 - **Blue:** StayBlur / selection mode
-- **Red:** `Termina selezione` — exits the active selection mode
+- **ESC:** exits the active continuous selection mode
 - **Red outline:** destructive removal actions such as deleting saved obscurations
 - **Blue outline:** focuses a saved rule's corresponding element on the page
 
 Brand source files live in [`assets/branding`](assets/branding/).
 
-## V1.0.0
+## V1.1.1
 
-- Select any visible page element manually
+- Select visible page elements manually
+- Select multiple elements in one continuous selection session
 - Blur, strong blur, pixelation, blackout and hide effects
 - Adjustable blur intensity
-- Rules scoped to a page or an entire site
 - Rules persist across refreshes and browser restarts
 - Works with dynamic DOM / SPA pages
 - Same-origin iframe support
@@ -42,10 +40,11 @@ Brand source files live in [`assets/branding`](assets/branding/).
 - Explicit rule deletion
 - Local-only storage
 - Microsoft Edge / Windows first, with Chromium portability in mind
+- Hardened content-script messaging to avoid unnecessary reinjection races
 
 ## Install locally on Microsoft Edge
 
-1. Download the `extension` folder from the repository or from the V1.0.0 release package.
+1. Download the `extension` folder from the repository or from the release package.
 2. Open `edge://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked**.
@@ -80,17 +79,17 @@ assets/branding/    Canonical StayBlur brand assets
 
 StayBlur prefers a missed match over a wrong match. A saved rule is only re-applied automatically when the matcher has enough independent evidence that the current element is the intended one. If confidence is insufficient, the rule remains saved but is not applied to a potentially wrong element.
 
-## Known V1 limitations
+## Known limitations
 
 - Blackout can be visually imperfect on some text elements.
 - Blackout inside some Shadow DOM content still needs rendering hardening.
 - Pixelation is experimental.
 - Complex canvas/video content may need specialized handling.
-- V1 validation targets Microsoft Edge on Windows.
+- V1.1.1 validation targets Microsoft Edge on Windows.
 
 ## What's next
 
-V1.1 will focus on matcher consolidation, performance, broader Chromium validation, and hardening the known rendering limitations.
+Future releases will focus on matcher consolidation, performance, broader Chromium validation, and hardening the known rendering limitations.
 
 ## License
 

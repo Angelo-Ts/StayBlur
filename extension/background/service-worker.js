@@ -8,7 +8,15 @@
   async function activeTab(){const tabs=await chrome.tabs.query({active:true,currentWindow:true});return tabs[0]}
   function pageBlockedMessage(text){return /cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text)?'Questa pagina non permette a StayBlur di accedere al contenuto. Prova su una normale pagina web (http/https).':text}
   async function injectContent(tabId){await chrome.scripting.executeScript({target:{tabId,allFrames:true},files:CONTENT_SCRIPTS})}
-  async function sendToContent(tabId,message){try{return await chrome.tabs.sendMessage(tabId,message)}catch(firstError){try{await injectContent(tabId);return await chrome.tabs.sendMessage(tabId,message)}catch(injectError){throw new Error(pageBlockedMessage(String(injectError?.message||firstError?.message||injectError)))}}}
+  async function pingContent(tabId){try{return await chrome.tabs.sendMessage(tabId,{type:'CONTENT_GET_STATE'})}catch(_){return null}}
+  async function sendToContent(tabId,message){
+    const first=await pingContent(tabId);
+    if(first?.ok){return chrome.tabs.sendMessage(tabId,message)}
+    await new Promise(resolve=>setTimeout(resolve,80));
+    const second=await pingContent(tabId);
+    if(second?.ok){return chrome.tabs.sendMessage(tabId,message)}
+    try{await injectContent(tabId);return await chrome.tabs.sendMessage(tabId,message)}catch(injectError){throw new Error(pageBlockedMessage(String(injectError?.message||injectError)))}
+  }
   async function focusRuleOnPage(tabId,ruleId){try{await chrome.scripting.executeScript({target:{tabId,allFrames:true},func:(source,id)=>window.postMessage({source,ruleId:id},'*'),args:[FOCUS_SOURCE,ruleId]});return{ok:true,result:true}}catch(error){throw new Error(pageBlockedMessage(String(error?.message||error)))} }
   async function setExtensionEnabled(enabled){const stored=await chrome.storage.local.get({[SETTINGS_KEY]:{}}),current=stored[SETTINGS_KEY]||{};await chrome.storage.local.set({[SETTINGS_KEY]:{...current,extensionEnabled:Boolean(enabled)}})}
   async function getRule(ruleId){const key=`rule:${ruleId}`,stored=await chrome.storage.local.get({[key]:null});return stored[key]||null}
