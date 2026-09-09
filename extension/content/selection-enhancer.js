@@ -164,6 +164,7 @@
     if (active) stop();
     active = true;
     clearHighlight();
+    originalStart();
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('click', handleClick, true);
     window.addEventListener('keydown', handleKeyDown, true);
