@@ -146,9 +146,7 @@
       target.dispatchEvent(click);
     } finally {
       syntheticClick = false;
-      setTimeout(() => {
-        if (!active) clearHighlight();
-      }, 0);
+      setTimeout(stop, 0);
     }
   }
 
