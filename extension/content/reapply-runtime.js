@@ -55,7 +55,6 @@
   };
   const tokens = value => String(value || '').split(/\s+/).map(x => x.trim()).filter(stable);
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const shortNorm = value => norm(value).slice(0, 1200);
   const esc = value => CSS.escape(String(value));
 
   function ensureStyle() {
@@ -88,12 +87,7 @@
 
   function textAnchors(text) {
     const value = norm(text);
-    if (!value) return { prefix: '', suffix: '', length: 0 };
-    return {
-      prefix: value.slice(0, 100),
-      suffix: value.slice(-100),
-      length: value.length
-    };
+    return { prefix: value.slice(0, 100), suffix: value.slice(-100), length: value.length };
   }
 
   function score(fp, el) {
@@ -119,9 +113,7 @@
 
     const attrs = fp.semanticAttributes || [];
     if (attrs.length) {
-      const hit = attrs.filter(a =>
-        el.getAttribute(a.name)?.toLowerCase() === String(a.value).toLowerCase()
-      ).length / attrs.length;
+      const hit = attrs.filter(a => el.getAttribute(a.name)?.toLowerCase() === String(a.value).toLowerCase()).length / attrs.length;
       if (hit >= .65) {
         value += .18;
         independent++;
@@ -141,8 +133,7 @@
       }
     }
 
-    if (Number.isInteger(fp.siblingIndex) &&
-        fp.siblingIndex === [...(el.parentElement?.children || [])].indexOf(el)) {
+    if (Number.isInteger(fp.siblingIndex) && fp.siblingIndex === [...(el.parentElement?.children || [])].indexOf(el)) {
       value += .07;
       independent++;
     }
@@ -150,22 +141,13 @@
     if (storedText && elementText === storedText) {
       value += .14;
       independent++;
-    } else if (storedText && storedText.length >= 20) {
+    } else if (storedText.length >= 20) {
       const anchors = textAnchors(storedText);
       const prefixOk = anchors.prefix.length >= 20 && elementText.startsWith(anchors.prefix);
       const suffixOk = anchors.suffix.length >= 20 && elementText.endsWith(anchors.suffix);
-      const lengthRatio = anchors.length
-        ? Math.min(elementText.length, anchors.length) / Math.max(elementText.length, anchors.length)
-        : 0;
-
-      if (prefixOk) {
-        value += .08;
-        independent++;
-      }
-      if (suffixOk) {
-        value += .08;
-        independent++;
-      }
+      const lengthRatio = anchors.length ? Math.min(elementText.length, anchors.length) / Math.max(elementText.length, anchors.length) : 0;
+      if (prefixOk) { value += .08; independent++; }
+      if (suffixOk) { value += .08; independent++; }
       if (lengthRatio >= .75) value += .04;
     }
 
@@ -173,9 +155,7 @@
   }
 
   function addCandidates(set, list) {
-    for (const element of list || []) {
-      if (element instanceof Element) set.add(element);
-    }
+    for (const element of list || []) if (element instanceof Element) set.add(element);
   }
 
   function findElement(rule) {
@@ -185,22 +165,14 @@
     if (fp.stableId) {
       try { addCandidates(candidates, document.querySelectorAll(`#${esc(fp.stableId)}`)); } catch (_) {}
     }
-
     if (fp.cssSelector) {
       try { addCandidates(candidates, document.querySelectorAll(fp.cssSelector)); } catch (_) {}
     }
-
     for (const attr of fp.semanticAttributes || []) {
-      try {
-        addCandidates(candidates, document.querySelectorAll(
-          `[${esc(attr.name)}="${CSS.escape(String(attr.value))}"]`
-        ));
-      } catch (_) {}
+      try { addCandidates(candidates, document.querySelectorAll(`[${esc(attr.name)}="${CSS.escape(String(attr.value))}"]`)); } catch (_) {}
     }
 
-    const tag = fp.tagName && /^[a-z][a-z0-9-]*$/i.test(fp.tagName)
-      ? fp.tagName
-      : null;
+    const tag = fp.tagName && /^[a-z][a-z0-9-]*$/i.test(fp.tagName) ? fp.tagName : null;
     const storedText = norm(fp.text);
     if (tag) {
       const elements = document.getElementsByTagName(tag);
@@ -208,27 +180,12 @@
         const anchors = textAnchors(storedText);
         for (const element of elements) {
           const text = norm(element.textContent);
-          if (
-            text === storedText ||
-            (storedText.length >= 20 && (
-              (anchors.prefix.length >= 20 && text.startsWith(anchors.prefix)) ||
-              (anchors.suffix.length >= 20 && text.endsWith(anchors.suffix))
-            ))
-          ) {
+          if (text === storedText || (storedText.length >= 20 && ((anchors.prefix.length >= 20 && text.startsWith(anchors.prefix)) || (anchors.suffix.length >= 20 && text.endsWith(anchors.suffix))))) {
             candidates.add(element);
           }
         }
       }
-
-      // When there are no useful text candidates, score the tag population.
       if (!candidates.size && elements.length <= 500) addCandidates(candidates, elements);
-    }
-
-    // Last fallback: scan visible elements with the same first-level semantic
-    // shape. This is deliberately capped to avoid expensive page-wide scans.
-    if (!candidates.size && fp.tagName && document.querySelectorAll) {
-      const all = document.querySelectorAll(fp.tagName);
-      if (all.length <= 500) addCandidates(candidates, all);
     }
 
     let best = null;
@@ -242,31 +199,18 @@
         second = current;
       }
     }
-
     if (!best) return null;
 
     const gap = second ? best.score - second.score : 1;
-    const uniqueSelector = (() => {
-      if (!fp.cssSelector) return false;
-      try { return document.querySelectorAll(fp.cssSelector).length === 1; } catch (_) { return false; }
-    })();
-
-    // A unique selector remains the strongest signal for page-scoped rules,
-    // but only if it still points to the same tag type.
+    let uniqueSelector = false;
+    if (fp.cssSelector) {
+      try { uniqueSelector = document.querySelectorAll(fp.cssSelector).length === 1; } catch (_) {}
+    }
     if (uniqueSelector && best.element.tagName.toLowerCase() === fp.tagName) {
       return { element: best.element, confidence: 1, independent: Math.max(3, best.independent) };
     }
-
-    if (best.score >= .68 && best.independent >= 2 && gap > .08) {
-      return best;
-    }
-
-    // Exact text + a stable semantic/id anchor is safe even when the overall
-    // score is lower because the two signals are independent.
-    if (best.independent >= 2 && best.score >= .62 && gap > .12) {
-      return best;
-    }
-
+    if (best.score >= .68 && best.independent >= 2 && gap > .08) return best;
+    if (best.independent >= 2 && best.score >= .62 && gap > .12) return best;
     return null;
   }
 
@@ -276,13 +220,9 @@
     const indexes = await chrome.storage.local.get({ [keys[0]]: [], [keys[1]]: [] });
     const ids = [...new Set([...(indexes[keys[0]] || []), ...(indexes[keys[1]] || [])])];
     if (!ids.length) return [];
-
     const loaded = await chrome.storage.local.get(ids.map(ruleKey));
     const currentFrame = frameKey() || 'unknown';
-    return ids
-      .map(id => loaded[ruleKey(id)])
-      .filter(Boolean)
-      .filter(rule => !rule.frameKey || rule.frameKey === currentFrame);
+    return ids.map(id => loaded[ruleKey(id)]).filter(Boolean).filter(rule => !rule.frameKey || rule.frameKey === currentFrame);
   }
 
   async function extensionEnabled() {
@@ -295,10 +235,7 @@
     ensureStyle();
     for (const effect of EFFECTS) element.classList.remove(`pb-effect-${effect}`);
     const intensity = Math.max(0, Math.min(100, Number(rule.intensity ?? 60)));
-    element.classList.add(
-      'pb-effect-base',
-      `pb-effect-${EFFECTS.includes(rule.effect) ? rule.effect : 'blur'}`
-    );
+    element.classList.add('pb-effect-base', `pb-effect-${EFFECTS.includes(rule.effect) ? rule.effect : 'blur'}`);
     element.style.setProperty('--pb-blur', `${Math.max(1, Math.round(intensity * .12))}px`);
     element.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(intensity * .28))}px`);
     element.setAttribute(ATTR, rule.ruleId);
@@ -323,9 +260,7 @@
   function removeDomRule(ruleId) {
     if (!ruleId) return;
     try {
-      for (const element of document.querySelectorAll(`[${ATTR}="${esc(ruleId)}"]`)) {
-        removeVisualEffect(element);
-      }
+      for (const element of document.querySelectorAll(`[${ATTR}="${esc(ruleId)}"]`)) removeVisualEffect(element);
     } catch (_) {}
     remove(ruleId);
   }
@@ -343,41 +278,29 @@
       removeDomRule(rule.ruleId);
       return true;
     }
-
     for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
       if (attempt) await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]));
       if (!rule.enabled || suppressed.has(rule.ruleId) || !(await extensionEnabled())) {
         removeDomRule(rule.ruleId);
         return true;
       }
-
       const result = findElement(rule);
       if (result) return apply(rule, result.element);
     }
-
     return false;
   }
 
   async function evaluateAll() {
-    if (evaluating) {
-      pendingEvaluate = true;
-      return;
-    }
-
+    if (evaluating) { pendingEvaluate = true; return; }
     evaluating = true;
     try {
       const rules = await getRules();
       await Promise.all(rules.map(applyRuleWithRetry));
       const activeIds = new Set(rules.map(rule => rule.ruleId));
-      for (const ruleId of [...applied.keys()]) {
-        if (!activeIds.has(ruleId)) remove(ruleId);
-      }
+      for (const ruleId of [...applied.keys()]) if (!activeIds.has(ruleId)) remove(ruleId);
     } finally {
       evaluating = false;
-      if (pendingEvaluate) {
-        pendingEvaluate = false;
-        schedule();
-      }
+      if (pendingEvaluate) { pendingEvaluate = false; schedule(); }
     }
   }
 
@@ -411,24 +334,17 @@
   });
 
   chrome.storage.onChanged.addListener(changes => {
-    const relevant =
-      changes[SETTINGS_KEY] ||
-      Object.keys(changes).some(key => key.startsWith(RULE_PREFIX) || key.startsWith('idx:'));
+    const relevant = changes[SETTINGS_KEY] || Object.keys(changes).some(key => key.startsWith(RULE_PREFIX) || key.startsWith('idx:'));
     if (!relevant) return;
-
     if (changes[SETTINGS_KEY]?.newValue?.extensionEnabled === false) {
       removeDomAll();
       return;
     }
-
     for (const [key, change] of Object.entries(changes)) {
       if (!key.startsWith(RULE_PREFIX)) continue;
       const rule = change.newValue;
-      if (!rule?.enabled) {
-        suppressed.add(rule?.ruleId || key.slice(RULE_PREFIX.length));
-      } else if (rule.ruleId) {
-        suppressed.delete(rule.ruleId);
-      }
+      if (!rule?.enabled) suppressed.add(rule?.ruleId || key.slice(RULE_PREFIX.length));
+      else if (rule.ruleId) suppressed.delete(rule.ruleId);
     }
     schedule(0);
   });
@@ -436,25 +352,16 @@
   const observer = new MutationObserver(mutations => {
     if (mutations.some(m => m.type === 'childList' && m.addedNodes.length)) schedule(100);
   });
-  if (document.documentElement) {
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
+  if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true });
 
-  addEventListener('popstate', () => {
-    suppressed.clear();
-    schedule(0);
-  }, true);
-
+  addEventListener('popstate', () => { suppressed.clear(); schedule(0); }, true);
   for (const name of ['pushState', 'replaceState']) {
     const original = history[name];
     if (original.__stayBlurRuntimeWrapped) continue;
     const wrapped = function (...args) {
       const before = location.href;
       const result = original.apply(this, args);
-      if (location.href !== before) {
-        suppressed.clear();
-        schedule(0);
-      }
+      if (location.href !== before) { suppressed.clear(); schedule(0); }
       return result;
     };
     Object.defineProperty(wrapped, '__stayBlurRuntimeWrapped', { value: true });
