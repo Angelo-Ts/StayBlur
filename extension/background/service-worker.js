@@ -8,7 +8,7 @@
   async function activeTab(){const tabs=await chrome.tabs.query({active:true,currentWindow:true});return tabs[0]}
   function pageBlockedMessage(text){return /cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text)?'Questa pagina non permette a StayBlur di accedere al contenuto. Prova su una normale pagina web (http/https).':text}
   async function injectContent(tabId){await chrome.scripting.executeScript({target:{tabId,allFrames:true},files:CONTENT_SCRIPTS})}
-  async function pingContent(tabId){try{return await chrome.tabs.sendMessage(tabId,{type:'CONTENT_PING'})}catch(_){return null}}
+  async function pingContent(tabId){try{return await chrome.tabs.sendMessage(tabId,{type:'CONTENT_GET_STATE'})}catch(_){return null}}
   async function sendToContent(tabId,message){
     const first=await pingContent(tabId);
     if(first?.ok){return chrome.tabs.sendMessage(tabId,message)}
