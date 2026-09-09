@@ -10,7 +10,8 @@
   const STRUCTURAL_TAGS = new Set(['article', 'section', 'main', 'aside', 'nav', 'header', 'footer', 'form', 'li', 'fieldset', 'figure', 'table', 'tr', 'td', 'th']);
   const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'textarea', 'select', 'option']);
   const SEMANTIC_ROLES = new Set(['button', 'link', 'listitem', 'menuitem', 'option', 'tab', 'dialog', 'article', 'region', 'navigation', 'main', 'complementary']);
-  const CONTAINER_WORDS = /(?:card|panel|tile|item|row|container|wrapper|section|sidebar|menu|dialog|modal|list|content|group|box)/i;
+  const STRONG_CONTAINER_WORDS = /(?:card|panel|tile|modal|dialog|sidebar)/i;
+  const CONTAINER_WORDS = /(?:item|row|container|wrapper|section|menu|list|content|group|box)/i;
 
   let originalStart = null;
   let originalStop = null;
@@ -36,18 +37,21 @@
     const tag = element.tagName.toLowerCase();
     const role = (element.getAttribute('role') || '').toLowerCase();
     const className = typeof element.className === 'string' ? element.className : '';
+    const id = element.id || '';
 
     let score = 0;
     if (STRUCTURAL_TAGS.has(tag)) score += 3;
     if (INTERACTIVE_TAGS.has(tag)) score += 4;
     if (SEMANTIC_ROLES.has(role)) score += 4;
-    if (CONTAINER_WORDS.test(className)) score += 2;
+    if (STRONG_CONTAINER_WORDS.test(className)) score += 4;
+    else if (CONTAINER_WORDS.test(className)) score += 1.5;
     if (element.hasAttribute('data-testid') || element.hasAttribute('data-test')) score += 1;
-    if (element.id && /(?:card|panel|item|container|section|menu|dialog|modal)/i.test(element.id)) score += 2;
+    if (STRONG_CONTAINER_WORDS.test(id)) score += 3;
+    else if (/(?:item|row|container|section|menu|list|content|group|box)/i.test(id)) score += 1.5;
     return score;
   }
 
-  function candidateScore(element, origin) {
+  function candidateScore(element, origin, depth) {
     const tag = element.tagName.toLowerCase();
     const rect = element.getBoundingClientRect();
     const area = viewportArea(element);
@@ -56,13 +60,27 @@
     const originArea = Math.max(1, viewportArea(origin));
     const growth = Math.min(4, Math.log2(Math.max(1, area / originArea)));
 
-    let score = 0;
-    score += semanticScore(element);
-    score += growth * 1.4;
+    let score = semanticScore(element);
 
-    if (LEAF_TAGS.has(tag)) score -= 3;
-    if (tag === 'div') score += 0.5;
-    if (tag === 'p') score -= 0.5;
+    // Expansion is useful, but should not by itself cause a large page wrapper
+    // to beat a nearby card. Moderate growth is the sweet spot.
+    if (growth > 0) score += Math.min(2.8, growth * 0.9);
+    if (growth > 3) score -= (growth - 3) * 1.8;
+
+    // Prefer nearby ancestors when scores are otherwise similar.
+    score -= Math.max(0, depth - 1) * 0.45;
+
+    if (LEAF_TAGS.has(tag)) score -= 4;
+    if (tag === 'div') score += 0.25;
+    if (tag === 'p') score -= 0.75;
+
+    // A table cell/row is often just an intermediate wrapper. Keep structural
+    // semantics, but make it harder for generic table nodes to win over a card.
+    if (tag === 'table' || tag === 'tr' || tag === 'td' || tag === 'th') score -= 1;
+
+    // Penalize oversized candidates progressively rather than using only a hard
+    // cutoff. This prevents generic app/page containers from winning by area.
+    if (areaRatio > 0.35) score -= (areaRatio - 0.35) * 12;
     if (areaRatio > VIEWPORT_AREA_LIMIT) score -= 7;
     if (rect.width > window.innerWidth * 0.95 && rect.height > window.innerHeight * 0.95) score -= 8;
     if (element.hasAttribute(RULE_ATTR)) score -= 6;
@@ -78,7 +96,7 @@
     if (INTERACTIVE_TAGS.has(originTag) || origin.hasAttribute('contenteditable')) return origin;
 
     let best = origin;
-    let bestScore = candidateScore(origin, origin);
+    let bestScore = candidateScore(origin, origin, 0);
     let candidate = origin.parentElement;
 
     for (let depth = 1; candidate && depth <= MAX_DEPTH; depth += 1) {
@@ -86,7 +104,7 @@
       const tag = candidate.tagName.toLowerCase();
       if (tag === 'html' || tag === 'body' || tag === 'head') break;
 
-      const score = candidateScore(candidate, origin) + (depth <= 2 ? 0.8 : 0);
+      const score = candidateScore(candidate, origin, depth);
       if (score > bestScore + 0.35) {
         best = candidate;
         bestScore = score;
@@ -123,10 +141,6 @@
     const target = chooseTarget(event.target);
     if (!target) return;
 
-    // This listener is intentionally registered before the original selector
-    // when selection starts. The original selector therefore never receives
-    // the user's real click; it only receives the controlled synthetic click
-    // below, with the resolved container as event.target.
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -167,9 +181,6 @@
     active = true;
     clearHighlight();
 
-    // Register the enhancer first. The original selector is started only
-    // afterwards, so the enhancer wins the capture phase and can resolve a
-    // parent card/container before the original handler sees the click.
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('click', handleClick, true);
     window.addEventListener('keydown', handleKeyDown, true);
