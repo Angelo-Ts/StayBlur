@@ -1,11 +1,11 @@
 {
   "name": "stayblur",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Manifest V3 browser extension for persistent, safety-first element obscuring.",
   "main": "index.js",
   "directories": {"doc": "docs"},
   "scripts": {"test": "vitest run", "test:watch": "vitest", "build": "tsc -p tsconfig.json --noEmit", "validate:extension": "node scripts/validate-extension.mjs", "check": "npm run build && npm test && npm run validate:extension"},
-  "repository": {"type": "git", "url": "https://github.com/Angelo-Ts/progettoBlur.git"},
+  "repository": {"type": "git", "url": "https://github.com/Angelo-Ts/StayBlur.git"},
   "keywords": ["browser-extension", "chromium", "manifest-v3", "persistent-blur", "privacy", "presentation"],
   "author": "Angelo-Ts",
   "license": "ISC",
