@@ -123,6 +123,10 @@
     const target = chooseTarget(event.target);
     if (!target) return;
 
+    // This listener is intentionally registered before the original selector
+    // when selection starts. The original selector therefore never receives
+    // the user's real click; it only receives the controlled synthetic click
+    // below, with the resolved container as event.target.
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -162,10 +166,14 @@
     if (active) stop();
     active = true;
     clearHighlight();
-    originalStart();
+
+    // Register the enhancer first. The original selector is started only
+    // afterwards, so the enhancer wins the capture phase and can resolve a
+    // parent card/container before the original handler sees the click.
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('click', handleClick, true);
     window.addEventListener('keydown', handleKeyDown, true);
+    originalStart();
   }
 
   function stop() {
