@@ -7,6 +7,7 @@
     'content/content-script.js',
     'content/reapply-runtime.js',
     'content/cleanup-runtime.js',
+    'content/disabled-all-guard.js',
     'content/focus-overlay.js',
     'content/shadow-style.js'
   ];
