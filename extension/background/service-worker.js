@@ -1,12 +1,12 @@
 (() => {
   'use strict';
   const SETTINGS_KEY='pb:settings';
-  const CONTENT_SCRIPTS=['content/selection-style.js','content/content-script.js','content/focus-overlay.js','content/shadow-style.js'];
+  const CONTENT_SCRIPTS=['content/selection-style.js','content/content-script.js','content/reapply-runtime.js','content/cleanup-runtime.js','content/focus-overlay.js','content/shadow-style.js'];
   const map={POPUP_GET_STATE:'CONTENT_GET_STATE',POPUP_START_SELECTION:'BG_ENTER_SELECTION',POPUP_STOP_SELECTION:'BG_EXIT_SELECTION',POPUP_RETRY_RULE:'BG_RETRY_RULE_ON_PAGE',POPUP_REMOVE_BLUR_PAGE_ONLY:'BG_REMOVE_RULE_EFFECT_PAGE',POPUP_REMOVE_ALL_EFFECTS_PAGE:'BG_REMOVE_ALL_EFFECTS_PAGE'};
   const FOCUS_SOURCE='stayblur-focus-rule';
   chrome.runtime.onInstalled.addListener(async()=>{const state=await chrome.storage.local.get({[SETTINGS_KEY]:null});if(!state[SETTINGS_KEY])await chrome.storage.local.set({[SETTINGS_KEY]:{extensionEnabled:true}})});
   async function activeTab(){const tabs=await chrome.tabs.query({active:true,currentWindow:true});return tabs[0]}
-  function pageBlockedMessage(text){return /cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text)?'Questa pagina non permette a StayBlur di accedere al contenuto. Prova su una normale pagina web (http/https).':text}
+  function pageBlockedMessage(text){return /cannot access contents|extensions gallery|chrome:\/\//i.test(text)?'Questa pagina non permette a StayBlur di accedere al contenuto. Prova su una normale pagina web (http/https).':text}
   async function injectContent(tabId){await chrome.scripting.executeScript({target:{tabId,allFrames:true},files:CONTENT_SCRIPTS})}
   async function pingContent(tabId){try{return await chrome.tabs.sendMessage(tabId,{type:'CONTENT_GET_STATE'})}catch(_){return null}}
   async function sendToContent(tabId,message){
