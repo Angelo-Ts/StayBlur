@@ -16,6 +16,10 @@
   const SAFETY_MIN_CONFIDENCE = .85;
   const SAFETY_MIN_INDEPENDENT = 3;
   const EFFECT_CLASSES = ['pb-effect-base', 'pb-effect-blur', 'pb-effect-strongBlur', 'pb-effect-pixelate', 'pb-effect-blackout', 'pb-effect-hide'];
+  const ALLOWED_EFFECTS = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']);
+  const semanticCache = new WeakMap();
+  const textHashCache = new WeakMap();
+  const classTokensCache = new WeakMap();
   const keyRule = id => `${RULE_PREFIX}${id}`;
   const keyDomain = d => `${DOMAIN_PREFIX}${d}`;
   const keyPage = (d, p) => `${PAGE_PREFIX}${d}:${p}`;
@@ -39,19 +43,108 @@
   function volatileText(value) { const s = normalizeText(value); return !s || s.length > 1200 || /\b(?:\d{4,}|[A-F0-9]{12,})\b/i.test(s); }
   const attrNames = /^(data-|aria-|name$|role$|type$|href$|inputmode$|rel$|target$)/i;
   const rawAttrs = new Set(['role', 'type', 'inputmode', 'rel', 'target']);
-  async function semanticAttrs(el) { const out = []; for (const a of el.attributes || []) { if (!attrNames.test(a.name) || !a.value) continue; const name = a.name.toLowerCase(); out.push({ name, valueKind: rawAttrs.has(name) ? 'structural' : 'hash', value: rawAttrs.has(name) ? a.value.toLowerCase() : await sha256(a.value.toLowerCase()) }); } return out; }
+  async function semanticAttrs(el) {
+    const relevant = [];
+    for (const a of el.attributes || []) {
+      if (!attrNames.test(a.name) || !a.value) continue;
+      relevant.push(`${a.name.toLowerCase()}=${a.value}`);
+    }
+    const signature = relevant.join('\u0001');
+    const cached = semanticCache.get(el);
+    if (cached?.signature === signature) return cached.value;
+    const out = [];
+    for (const item of relevant) {
+      const separator = item.indexOf('=');
+      const name = item.slice(0, separator);
+      const raw = item.slice(separator + 1);
+      const valueKind = rawAttrs.has(name) ? 'structural' : 'hash';
+      out.push({ name, valueKind, value: valueKind === 'structural' ? raw.toLowerCase() : await sha256(raw.toLowerCase()) });
+    }
+    semanticCache.set(el, { signature, value: out });
+    return out;
+  }
   function cssPathFor(el) { const parts = []; let cur = el, depth = 0; while (cur instanceof Element && cur !== document.documentElement && depth++ < 8) { const tag = cur.tagName.toLowerCase(), id = stableToken(cur.id) ? cur.id : ''; if (id) { parts.unshift(`#${CSS.escape(id)}`); break; } const classes = stableTokens(String(cur.className || '').split(/\s+/).filter(Boolean)).slice(0, 2); let part = tag; if (classes.length) part += `.${classes.map(CSS.escape).join('.')}`; const siblings = cur.parentElement ? [...cur.parentElement.children].filter(x => x.tagName === cur.tagName) : []; if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(cur) + 1})`; parts.unshift(part); cur = cur.parentElement; } return parts.join('>'); }
   async function fingerprint(el) { const ids = stableTokens([el.id]), classes = stableTokens(String(el.className || '').split(/\s+/).filter(Boolean)), attrs = await semanticAttrs(el), text = normalizeText(el.textContent || ''); const fp = { generationVersion: '1.5', cssSelector: cssPathFor(el), stableId: ids[0] ? { value: ids[0] } : undefined, semanticAttributes: attrs, stableClasses: classes.map(className => ({ className })), tagName: el.tagName.toLowerCase() }; if (!volatileText(text)) fp.normalizedTextHash = { algorithm: 'SHA-256', hash: await sha256(text), stable: true }; const chain = []; let p = el.parentElement, depth = 0; while (p && depth++ < 4) { chain.push({ tag: p.tagName.toLowerCase(), stableClasses: stableTokens(String(p.className || '').split(/\s+/).filter(Boolean)) }); p = p.parentElement; } fp.ancestorContext = { chain, depthCaptured: chain.length }; const parent = el.parentElement, siblings = parent ? [...parent.children] : [], i = siblings.indexOf(el); fp.structureContext = { siblingSignature: { previousTag: i > 0 ? siblings[i - 1].tagName.toLowerCase() : undefined, nextTag: i >= 0 && i < siblings.length - 1 ? siblings[i + 1].tagName.toLowerCase() : undefined, indexWithinStableParent: i >= 0 ? i : undefined }, childSignature: { stableChildTagsTopK: [...new Set([...el.children].slice(0, 5).map(x => x.tagName.toLowerCase()))].slice(0, 3) } }; const r = el.getBoundingClientRect(), vw = Math.max(innerWidth, 1), vh = Math.max(innerHeight, 1); fp.geometricHint = { viewportXRatio: Math.max(0, Math.min(1, r.x / vw)), viewportYRatio: Math.max(0, Math.min(1, r.y / vh)), widthRatio: Math.max(0, Math.min(1, r.width / vw)), heightRatio: Math.max(0, Math.min(1, r.height / vh)) }; return fp; }
   function eqAttrs(a, b) { return a.name === b.name && a.valueKind === b.valueKind && a.value === b.value; }
-  async function score(fp, el, cssMatched) { const attrs = await semanticAttrs(el), id = fp.stableId && el.id === fp.stableId.value ? 1 : 0, semantic = fp.semanticAttributes?.length ? fp.semanticAttributes.filter(x => attrs.some(y => eqAttrs(x, y))).length / fp.semanticAttributes.length : 0, text = fp.normalizedTextHash && !volatileText(el.textContent) && await sha256(normalizeText(el.textContent)) === fp.normalizedTextHash.hash ? 1 : 0, classes = fp.stableClasses?.length ? fp.stableClasses.filter(x => stableTokens(String(el.className || '').split(/\s+/)).includes(x.className)).length / fp.stableClasses.length : 0; let parent = el.parentElement, ancestor = 0, depth = 0; for (const expected of fp.ancestorContext?.chain || []) { if (!parent || depth++ >= 4) break; if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableTokens(String(parent.className || '').split(/\s+/)).includes(c))) ancestor += 1; parent = parent.parentElement; } ancestor = fp.ancestorContext?.chain?.length ? ancestor / fp.ancestorContext.chain.length : 0; const i = el.parentElement ? [...el.parentElement.children].indexOf(el) : -1, expectedIndex = fp.structureContext?.siblingSignature?.indexWithinStableParent, structureAvailable = Number.isInteger(expectedIndex) && expectedIndex >= 0, structure = structureAvailable && expectedIndex === i ? 1 : 0, css = cssMatched ? 1 : 0, r = el.getBoundingClientRect(), g = fp.geometricHint; const geometry = g ? Math.max(0, 1 - (Math.abs(r.x / Math.max(innerWidth, 1) - g.viewportXRatio) + Math.abs(r.y / Math.max(innerHeight, 1) - g.viewportYRatio) + Math.abs(r.width / Math.max(innerWidth, 1) - g.widthRatio) + Math.abs(r.height / Math.max(innerHeight, 1) - g.heightRatio)) / 4) : 0, tag = fp.tagName === el.tagName.toLowerCase() ? 1 : 0; const parts = { stableId: { score: id, available: !!fp.stableId }, semanticAttributes: { score: semantic, available: !!fp.semanticAttributes?.length }, textHash: { score: text, available: !!fp.normalizedTextHash }, stableClasses: { score: classes, available: !!fp.stableClasses?.length }, ancestorContext: { score: ancestor, available: !!fp.ancestorContext?.chain?.length }, structureContext: { score: structure, available: structureAvailable }, cssSelector: { score: css, available: true }, geometry: { score: geometry, available: !!g }, tagName: { score: tag, available: true } }; let total = 0, available = 0; for (const [k, v] of Object.entries(parts)) if (v.available) { total += WEIGHTS[k] * v.score; available += WEIGHTS[k]; } const independent = INDEPENDENT.filter(k => parts[k].available && parts[k].score >= .65).length; return { element: el, totalScore: available ? total / available : 0, independent, parts }; }
+  async function textHash(el) { const text = normalizeText(el.textContent); if (volatileText(text)) return null; const cached = textHashCache.get(el); if (cached?.text === text) return cached.hash; const hash = await sha256(text); textHashCache.set(el, { text, hash }); return hash; }
+  function stableClassList(el) { const raw = String(el.className || ''); const cached = classTokensCache.get(el); if (cached?.raw === raw) return cached.tokens; const tokens = stableTokens(raw.split(/\s+/).filter(Boolean)); classTokensCache.set(el, { raw, tokens }); return tokens; }
+  async function score(fp, el, cssMatched) {
+    const attrs = await semanticAttrs(el);
+    const id = fp.stableId && el.id === fp.stableId.value ? 1 : 0;
+    const semantic = fp.semanticAttributes?.length ? fp.semanticAttributes.filter(x => attrs.some(y => eqAttrs(x, y))).length / fp.semanticAttributes.length : 0;
+    const currentTextHash = fp.normalizedTextHash ? await textHash(el) : null;
+    const text = fp.normalizedTextHash && currentTextHash === fp.normalizedTextHash.hash ? 1 : 0;
+    const currentClasses = stableClassList(el);
+    const classes = fp.stableClasses?.length ? fp.stableClasses.filter(x => currentClasses.includes(x.className)).length / fp.stableClasses.length : 0;
+    let parent = el.parentElement, ancestor = 0, depth = 0;
+    for (const expected of fp.ancestorContext?.chain || []) {
+      if (!parent || depth++ >= 4) break;
+      if (parent.tagName.toLowerCase() === expected.tag && expected.stableClasses.every(c => stableClassList(parent).includes(c))) ancestor += 1;
+      parent = parent.parentElement;
+    }
+    ancestor = fp.ancestorContext?.chain?.length ? ancestor / fp.ancestorContext.chain.length : 0;
+    const siblings = el.parentElement?.children;
+    const i = siblings ? Array.prototype.indexOf.call(siblings, el) : -1;
+    const expectedIndex = fp.structureContext?.siblingSignature?.indexWithinStableParent;
+    const structureAvailable = Number.isInteger(expectedIndex) && expectedIndex >= 0;
+    const structure = structureAvailable && expectedIndex === i ? 1 : 0;
+    const css = cssMatched ? 1 : 0;
+    const r = el.getBoundingClientRect(), g = fp.geometricHint;
+    const vw = Math.max(innerWidth, 1), vh = Math.max(innerHeight, 1);
+    const geometry = g ? Math.max(0, 1 - (Math.abs(r.x / vw - g.viewportXRatio) + Math.abs(r.y / vh - g.viewportYRatio) + Math.abs(r.width / vw - g.widthRatio) + Math.abs(r.height / vh - g.heightRatio)) / 4) : 0;
+    const tag = fp.tagName === el.tagName.toLowerCase() ? 1 : 0;
+    const parts = { stableId: { score: id, available: !!fp.stableId }, semanticAttributes: { score: semantic, available: !!fp.semanticAttributes?.length }, textHash: { score: text, available: !!fp.normalizedTextHash }, stableClasses: { score: classes, available: !!fp.stableClasses?.length }, ancestorContext: { score: ancestor, available: !!fp.ancestorContext?.chain?.length }, structureContext: { score: structure, available: structureAvailable }, cssSelector: { score: css, available: true }, geometry: { score: geometry, available: !!g }, tagName: { score: tag, available: true } };
+    let total = 0, available = 0;
+    for (const [k, v] of Object.entries(parts)) if (v.available) { total += WEIGHTS[k] * v.score; available += WEIGHTS[k]; }
+    const independent = INDEPENDENT.filter(k => parts[k].available && parts[k].score >= .65).length;
+    return { element: el, totalScore: available ? total / available : 0, independent, parts };
+  }
   const shadowRoots = new Set();
-  function collectShadowRoots() { const roots = [document]; const visit = root => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot && !shadowRoots.has(el.shadowRoot)) { shadowRoots.add(el.shadowRoot); roots.push(el.shadowRoot); visit(el.shadowRoot); } }; visit(document); for (const root of shadowRoots) if (!roots.includes(root)) roots.push(root); return roots; }
+  let shadowRootsDirty = true;
+  let shadowRootList = [document];
+  function collectShadowRoots() {
+    if (!shadowRootsDirty) return shadowRootList;
+    const roots = [document];
+    const visit = root => {
+      for (const el of root.querySelectorAll('*')) {
+        if (!el.shadowRoot || shadowRoots.has(el.shadowRoot)) continue;
+        shadowRoots.add(el.shadowRoot);
+        roots.push(el.shadowRoot);
+        visit(el.shadowRoot);
+      }
+    };
+    visit(document);
+    for (const root of shadowRoots) if (!roots.includes(root)) roots.push(root);
+    shadowRootList = roots;
+    shadowRootsDirty = false;
+    return roots;
+  }
   function queryAll(selector) { const out = []; for (const root of collectShadowRoots()) { try { out.push(...root.querySelectorAll(selector)); } catch (_) {} } return out; }
-  async function match(fp) { const set = new Set(), cssSet = new WeakSet(); if (fp.cssSelector) queryAll(fp.cssSelector).forEach(el => { set.add(el); cssSet.add(el); }); if (fp.stableId?.value) queryAll(`#${CSS.escape(fp.stableId.value)}`).forEach(el => set.add(el)); for (const a of fp.semanticAttributes || []) if (a.valueKind === 'structural') queryAll(`[${CSS.escape(a.name)}="${CSS.escape(a.value)}"]`).forEach(el => set.add(el)); if (!set.size) queryAll(fp.tagName || '*').slice(0, MAX_CANDIDATES).forEach(el => set.add(el)); const ranked = []; for (const el of set) { ranked.push(await score(fp, el, cssSet.has(el))); if (ranked.length >= MAX_CANDIDATES) break; } ranked.sort((a, b) => b.totalScore - a.totalScore || b.independent - a.independent); const a = ranked[0], b = ranked[1]; if (!a || a.totalScore < .6) return { status: 'notFound', confidence: a?.totalScore || 0, selected: a }; if (a.totalScore < SAFETY_MIN_CONFIDENCE || a.independent < SAFETY_MIN_INDEPENDENT || (b && Math.abs(a.totalScore - b.totalScore) <= .05)) return { status: 'ambiguous', confidence: a.totalScore, selected: a }; return { status: 'active', confidence: a.totalScore, selected: a }; }
+  async function match(fp) {
+    const set = new Set(), cssSet = new WeakSet();
+    const roots = collectShadowRoots();
+    const query = selector => { const out = []; for (const root of roots) { try { out.push(...root.querySelectorAll(selector)); } catch (_) {} } return out; };
+    if (fp.cssSelector) query(fp.cssSelector).forEach(el => { set.add(el); cssSet.add(el); });
+    if (fp.stableId?.value) query(`#${CSS.escape(fp.stableId.value)}`).forEach(el => set.add(el));
+    for (const a of fp.semanticAttributes || []) if (a.valueKind === 'structural') query(`[${CSS.escape(a.name)}=\"${CSS.escape(a.value)}\"]`).forEach(el => set.add(el));
+    if (!set.size) query(fp.tagName || '*').slice(0, MAX_CANDIDATES).forEach(el => set.add(el));
+    let best = null, second = null, count = 0;
+    for (const el of set) {
+      const ranked = await score(fp, el, cssSet.has(el));
+      count += 1;
+      if (!best || ranked.totalScore > best.totalScore || (ranked.totalScore === best.totalScore && ranked.independent > best.independent)) { second = best; best = ranked; }
+      else if (!second || ranked.totalScore > second.totalScore || (ranked.totalScore === second.totalScore && ranked.independent > second.independent)) second = ranked;
+      if (count >= MAX_CANDIDATES) break;
+    }
+    const a = best, b = second;
+    if (!a || a.totalScore < .6) return { status: 'notFound', confidence: a?.totalScore || 0, selected: a };
+    if (a.totalScore < SAFETY_MIN_CONFIDENCE || a.independent < SAFETY_MIN_INDEPENDENT || (b && Math.abs(a.totalScore - b.totalScore) <= .05)) return { status: 'ambiguous', confidence: a.totalScore, selected: a };
+    return { status: 'active', confidence: a.totalScore, selected: a };
+  }
   let styleReady = false;
   function ensureStyle() { if (styleReady || document.getElementById(STYLE_ID)) { styleReady = true; return; } const style = document.createElement('style'); style.id = STYLE_ID; style.textContent = `.pb-effect-base{transition:filter 120ms ease}.pb-effect-blur{filter:blur(var(--pb-blur,6px))!important}.pb-effect-strongBlur{filter:blur(var(--pb-strong-blur,16px))!important}.pb-effect-pixelate{filter:blur(8px) contrast(1.8)!important}.pb-effect-blackout{filter:brightness(0)!important;color:transparent!important;text-shadow:none!important}.pb-effect-hide{visibility:hidden!important}`; (document.head || document.documentElement).appendChild(style); styleReady = true; }
   const original = new WeakMap(), applied = new Map();
-  function apply(el, rule) { if (!(el instanceof Element)) return; ensureStyle(); if (!original.has(el)) original.set(el, { filter: el.style.filter, visibility: el.style.visibility, color: el.style.color, textShadow: el.style.textShadow, blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') }); const px = Math.max(0, Math.min(100, Number(rule.intensity ?? 60))); EFFECT_CLASSES.slice(1).forEach(c => el.classList.remove(c)); el.classList.add('pb-effect-base', `pb-effect-${rule.effect || 'blur'}`); el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`); el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`); el.setAttribute(ATTR, rule.ruleId); applied.set(rule.ruleId, el); }
+  function apply(el, rule) { if (!(el instanceof Element)) return; ensureStyle(); if (!original.has(el)) original.set(el, { filter: el.style.filter, visibility: el.style.visibility, color: el.style.color, textShadow: el.style.textShadow, blur: el.style.getPropertyValue('--pb-blur'), strong: el.style.getPropertyValue('--pb-strong-blur') }); const px = Math.max(0, Math.min(100, Number(rule.intensity ?? 60))); const effectClass = `pb-effect-${rule.effect || 'blur'}`; if (!el.classList.contains('pb-effect-base')) el.classList.add('pb-effect-base'); for (const c of EFFECT_CLASSES.slice(1)) if (c !== effectClass) el.classList.remove(c); el.classList.add(effectClass); el.style.setProperty('--pb-blur', `${Math.max(1, Math.round(px / 100 * 12))}px`); el.style.setProperty('--pb-strong-blur', `${Math.max(4, Math.round(px / 100 * 28))}px`); if (el.getAttribute(ATTR) !== rule.ruleId) el.setAttribute(ATTR, rule.ruleId); applied.set(rule.ruleId, el); }
   function removeElement(el) { if (!(el instanceof Element)) return; EFFECT_CLASSES.forEach(c => el.classList.remove(c)); const o = original.get(el); if (o) { if (o.filter) el.style.setProperty('filter', o.filter); else el.style.removeProperty('filter'); if (o.visibility) el.style.setProperty('visibility', o.visibility); else el.style.removeProperty('visibility'); if (o.color) el.style.setProperty('color', o.color); else el.style.removeProperty('color'); if (o.textShadow) el.style.setProperty('text-shadow', o.textShadow); else el.style.removeProperty('text-shadow'); if (o.blur) el.style.setProperty('--pb-blur', o.blur); else el.style.removeProperty('--pb-blur'); if (o.strong) el.style.setProperty('--pb-strong-blur', o.strong); else el.style.removeProperty('--pb-strong-blur'); original.delete(el); } el.removeAttribute(ATTR); }
   function removeRule(id) { const el = applied.get(id); if (el) removeElement(el); applied.delete(id); if (!el) queryAll(`[${ATTR}="${CSS.escape(id)}"]`).forEach(removeElement); }
   function removeAll() { applied.clear(); queryAll(`[${ATTR}]`).forEach(removeElement); }
@@ -59,17 +152,68 @@
   let integrityFrame = 0, integrityQueued = false;
   async function checkAppliedIntegrity() { integrityFrame = 0; integrityQueued = false; if (!(await getSettings()).extensionEnabled || !applied.size) return; const rules = await getRules(), byId = new Map(rules.map(r => [r.ruleId, r])), missing = []; for (const [id, el] of applied) { const rule = byId.get(id); if (!rule || pageSuppressed.has(id)) continue; if (!effectIsIntact(el, rule)) missing.push([el, rule]); } for (const [el, rule] of missing) { if (el.isConnected) apply(el, rule); else queueEvaluate(0); } }
   function queueIntegrityCheck() { if (integrityQueued) return; integrityQueued = true; if (typeof requestAnimationFrame === 'function') integrityFrame = requestAnimationFrame(checkAppliedIntegrity); else integrityFrame = setTimeout(checkAppliedIntegrity, 0); }
-  let selection = false, hover = null, retryTimer = null, evaluating = false, evaluateQueued = false, selecting = false;
-  let selectionJobs = 0;
+  let selection = false, hover = null, retryTimer = null, evaluating = false, evaluateQueued = false, selecting = false, selectionJobs = 0;
   let selectionQueue = Promise.resolve();
   const retryCounts = new Map(), pageSuppressed = new Set();
   function removeIndicator() { const el = document.getElementById(INDICATOR_ID); if (el) el.remove(); }
-  function showIndicator() { removeIndicator(); const el = document.createElement('div'); el.id = INDICATOR_ID; el.setAttribute('data-progettoblur-ui', 'true'); const label = document.createElement('span'); label.textContent = 'Selezione attiva: clicca sugli elementi da oscurare (Esc per terminare)'; const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Termina selezione'; btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); stopSelection(); }, true); el.append(label, btn); (document.body || document.documentElement).appendChild(el); }
-  function stopSelection() { selection = false; selecting = false; document.removeEventListener('mousemove', onMove, true); document.removeEventListener('click', onClick, true); document.removeEventListener('keydown', onKey, true); if (hover) hover.classList.remove(HIGHLIGHT); hover = null; removeIndicator(); selectionQueue.finally(() => { if (!selection && selectionJobs === 0) queueEvaluate(0); }); }
+  function showIndicator() {
+    removeIndicator();
+    const el = document.createElement('div');
+    el.id = INDICATOR_ID;
+    el.setAttribute('data-progettoblur-ui', 'true');
+    const label = document.createElement('span');
+    label.textContent = 'Selezione attiva: clicca sugli elementi da oscurare (Esc per terminare)';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Termina selezione';
+    btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); stopSelection(); }, true);
+    el.append(label, btn);
+    (document.body || document.documentElement).appendChild(el);
+  }
+  function stopSelection() { selection = false; selecting = false; document.removeEventListener('mousemove', onMove, true); document.removeEventListener('click', onClick, true); document.removeEventListener('keydown', onKey, true); if (hover) hover.classList.remove(HIGHLIGHT); hover = null; removeIndicator(); if (selectionJobs) void selectionQueue.then(() => queueEvaluate(0)); }
   function target(t) { if (!(t instanceof Element) || t.id === STYLE_ID || t.closest('[data-progettoblur-ui="true"]')) return null; return t; }
-  function onMove(e) { const raw = target(e.target); if (!selection || !raw) return; const chooser = globalThis.__stayBlurChooseTarget; const t = typeof chooser === 'function' ? chooser(raw) : raw; if (!t) return; if (hover) hover.classList.remove(HIGHLIGHT); hover = t; hover.classList.add(HIGHLIGHT); }
-  async function createSelectionRule(t) { selectionJobs += 1; selecting = true; try { const c = context(), now = new Date().toISOString(), settings = await getSettings(), allowedEffects = new Set(['blur', 'strongBlur', 'pixelate', 'blackout', 'hide']), effect = allowedEffects.has(settings.selectionEffect) ? settings.selectionEffect : 'blur', intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60))); const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, frameKey: frameContextKey() || 'unknown', enabled: true, status: 'active', effect, intensity, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) }; await saveRule(rule); apply(t, rule); retryCounts.delete(rule.ruleId); } finally { selectionJobs = Math.max(0, selectionJobs - 1); selecting = selectionJobs > 0; if (!selection && selectionJobs === 0) queueEvaluate(0); } }
-  function onClick(e) { const raw = target(e.target); if (!selection || !raw || raw.tagName === 'IFRAME') return; const chooser = globalThis.__stayBlurChooseTarget; const t = typeof chooser === 'function' ? chooser(raw) : raw; if (!t || t.tagName === 'IFRAME') return; if (t.closest(`[${ATTR}]`)) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return; } e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); selectionQueue = selectionQueue.then(() => createSelectionRule(t)).catch(error => { console.error('[StayBlur] selection failed', error); }); }
+  let hoverFrame = 0, pendingHoverTarget = null;
+  function onMove(e) {
+    if (!selection) return;
+    pendingHoverTarget = e.target;
+    if (hoverFrame) return;
+    const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : fn => setTimeout(fn, 0);
+    hoverFrame = schedule(() => {
+      hoverFrame = 0;
+      if (!selection) return;
+      const raw = target(pendingHoverTarget);
+      pendingHoverTarget = null;
+      if (!raw) return;
+      const chooser = globalThis.__stayBlurChooseTarget;
+      const t = typeof chooser === 'function' ? chooser(raw) : raw;
+      if (!t) return;
+      if (hover && hover !== t) hover.classList.remove(HIGHLIGHT);
+      hover = t;
+      hover.classList.add(HIGHLIGHT);
+    });
+  }
+  function createSelectionRule(t) {
+    selectionJobs += 1;
+    selectionQueue = selectionQueue.then(async () => {
+      const c = context(), now = new Date().toISOString(), settings = await getSettings();
+      const effect = ALLOWED_EFFECTS.has(settings.selectionEffect) ? settings.selectionEffect : 'blur';
+      const intensity = Math.max(0, Math.min(100, Number(settings.selectionIntensity ?? 60)));
+      const rule = { ruleId: `rule-${crypto.randomUUID()}`, scope: 'page', domain: c.domain, path: c.path, url: location.href, frameKey: frameContextKey() || 'unknown', enabled: true, status: 'active', effect, intensity, createdAt: now, updatedAt: now, fingerprint: await fingerprint(t) };
+      await saveRule(rule);
+      apply(t, rule);
+      retryCounts.delete(rule.ruleId);
+    }).catch(() => {}).finally(() => { selectionJobs -= 1; });
+    return selectionQueue;
+  }
+  function onClick(e) {
+    if (!selection) return;
+    const rawTarget = e.target;
+    const t = globalThis.__stayBlurChooseTarget ? globalThis.__stayBlurChooseTarget(rawTarget) : target(rawTarget);
+    if (!t || t.tagName === 'IFRAME') return;
+    if (t.closest(`[${ATTR}]`)) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return; }
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    void createSelectionRule(t);
+  }
   function onKey(e) { if (e.key === 'Escape') stopSelection(); }
   function startSelection() { stopSelection(); selection = true; document.addEventListener('mousemove', onMove, true); document.addEventListener('click', onClick, true); document.addEventListener('keydown', onKey, true); showIndicator(); }
   globalThis.__progettoBlurStartSelection = startSelection;
@@ -77,14 +221,34 @@
   async function persistStatus(rule, result) { if (rule.status === result.status && Math.abs(Number(rule.lastConfidence || 0) - Number(result.confidence || 0)) < .01) return; const updated = { ...rule, status: result.status, lastConfidence: result.confidence, statusContext: { domain: context().domain, path: context().path, evaluatedAt: new Date().toISOString() }, lastMatchedAt: result.status === 'active' ? new Date().toISOString() : rule.lastMatchedAt }; await updateRule(updated); }
   async function evaluateRule(rule) { if (!ruleAppliesToCurrentFrame(rule)) { removeRule(rule.ruleId); return { status: 'notApplicable', confidence: 0 }; } if (!rule.enabled || !(await getSettings()).extensionEnabled) { removeRule(rule.ruleId); return { status: 'disabled', confidence: 0 }; } if (pageSuppressed.has(rule.ruleId)) { removeRule(rule.ruleId); return { status: 'suppressed', confidence: 0 }; } const result = await match(rule.fingerprint); if (result.status === 'active' && result.selected?.element) apply(result.selected.element, rule); else removeRule(rule.ruleId); await persistStatus(rule, result); return result; }
   async function evaluateAll() { if (evaluating) { evaluateQueued = true; return; } evaluating = true; try { const rules = await getRules(); const results = await Promise.all(rules.map(async r => ({ rule: r, result: await evaluateRule(r) }))); const pending = results.filter(x => x.rule.enabled && !pageSuppressed.has(x.rule.ruleId) && (x.result.status === 'notFound' || x.result.status === 'ambiguous')).map(x => x.rule.ruleId); if (pending.length) scheduleRetries(pending); } finally { evaluating = false; if (evaluateQueued) { evaluateQueued = false; queueEvaluate(0); } } }
+  function scheduleRetries(ids) {
+    clearTimeout(retryTimer);
+    const pendingIds = [...new Set(ids)].filter(id => !pageSuppressed.has(id));
+    if (!pendingIds.length) return;
+    const attempt = Math.max(...pendingIds.map(id => retryCounts.get(id) || 0));
+    if (attempt >= RETRY_DELAYS.length) return;
+    retryTimer = setTimeout(async () => {
+      const next = [], rules = await getRules(), byId = new Map(rules.map(rule => [rule.ruleId, rule]));
+      for (const id of pendingIds) {
+        if (pageSuppressed.has(id)) continue;
+        const n = retryCounts.get(id) || 0;
+        if (n >= RETRY_DELAYS.length) continue;
+        retryCounts.set(id, n + 1);
+        const r = byId.get(id);
+        if (!r || !r.enabled) continue;
+        const result = await evaluateRule(r);
+        if (result.status !== 'active') next.push(id);
+      }
+      if (next.length) scheduleRetries(next);
+    }, RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]);
+  }
   function queueEvaluate(delay = 20) { clearTimeout(retryTimer); retryTimer = setTimeout(evaluateAll, delay); }
-  function scheduleRetries(ids) { retryCounts.clear(); ids.forEach(id => retryCounts.set(id, 0)); queueRetry(ids); }
-  function queueRetry(ids) { const pending = ids.filter(id => retryCounts.has(id)); if (!pending.length) return; const next = Math.min(...pending.map(id => retryCounts.get(id) || 0)); const delay = RETRY_DELAYS[Math.min(next, RETRY_DELAYS.length - 1)]; clearTimeout(retryTimer); retryTimer = setTimeout(async () => { for (const id of pending) retryCounts.set(id, (retryCounts.get(id) || 0) + 1); await evaluateAll(); }, delay); }
-  const observedRoots = new Set();
-  function observeRoot(root) { if (!root || observedRoots.has(root)) return; const observer = new MutationObserver(mutations => { let added = false, integrity = false; for (const mutation of mutations) { if (mutation.type === 'childList' && mutation.addedNodes.length) added = true; if (mutation.type === 'attributes' && mutation.target instanceof Element && applied.has(mutation.target)) integrity = true; } if (integrity) queueIntegrityCheck(); if (added) { collectShadowRoots(); observeAllRoots(); if (!evaluating) queueEvaluate(20); else evaluateQueued = true; } }); observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: INTEGRITY_ATTRS }); observedRoots.add(root); }
-  function observeAllRoots() { collectShadowRoots().forEach(observeRoot); }
+  const observedRoots = new WeakSet();
+  function observeRoot(root) { if (!root || observedRoots.has(root)) return; const observer = new MutationObserver(mutations => { let added = false, integrity = false; for (const mutation of mutations) { if (mutation.type === 'childList' && mutation.addedNodes.length) { added = true; shadowRootsDirty = true; } if (mutation.type === 'attributes' && mutation.target instanceof Element && applied.has(mutation.target)) integrity = true; } if (integrity) queueIntegrityCheck(); if (added) { collectShadowRoots(); observeAllRoots(); if (!evaluating) queueEvaluate(20); else evaluateQueued = true; } }); observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: INTEGRITY_ATTRS }); observedRoots.add(root); }
+  function observeAllRoots() { if (document.documentElement) observeRoot(document.documentElement); for (const root of shadowRoots) observeRoot(root); }
+  addEventListener('scroll', queueIntegrityCheck, { capture: true, passive: true });
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => { (async () => { switch (message?.type) { case 'BG_ENTER_SELECTION': startSelection(); break; case 'BG_EXIT_SELECTION': stopSelection(); break; case 'BG_REMOVE_RULE_EFFECT_PAGE': pageSuppressed.add(message.ruleId); retryCounts.delete(message.ruleId); removeRule(message.ruleId); break; case 'BG_REMOVE_ALL_EFFECTS_PAGE': { const rules = await getRules(); rules.forEach(r => pageSuppressed.add(r.ruleId)); retryCounts.clear(); removeAll(); break; } case 'BG_RETRY_RULE_ON_PAGE': { pageSuppressed.delete(message.ruleId); retryCounts.delete(message.ruleId); const r = await getRule(message.ruleId); if (r) await evaluateRule(r); break; } case 'POPUP_DISABLE_RULE': { const r = await getRule(message.ruleId); if (r) { r.enabled = false; r.status = 'disabled'; pageSuppressed.delete(r.ruleId); await updateRule(r); removeRule(r.ruleId); } break; } case 'POPUP_ENABLE_RULE': { const r = await getRule(message.ruleId); if (r) { r.enabled = true; pageSuppressed.delete(r.ruleId); retryCounts.delete(r.ruleId); await updateRule(r); await evaluateRule(r); } break; } case 'POPUP_DELETE_RULE': pageSuppressed.delete(message.ruleId); retryCounts.delete(message.ruleId); removeRule(message.ruleId); await deleteRule(message.ruleId); break; case 'CONTENT_GET_STATE': { const settings = await getSettings(); sendResponse({ ok: true, extensionEnabled: settings.extensionEnabled !== false, selectionActive: selection, rules: await getRules() }); return; } default: break; } sendResponse({ ok: true }); })().catch(err => sendResponse({ ok: false, error: String(err?.message || err) })); return true; });
   function installSpaHooks() { for (const name of ['pushState', 'replaceState']) { const originalFn = history[name]; if (originalFn.__progettoBlurWrapped) continue; const wrapped = function (...args) { const before = location.href, result = originalFn.apply(this, args); if (location.href !== before) { retryCounts.clear(); pageSuppressed.clear(); invalidateRulesCache(); clearTimeout(retryTimer); evaluateAll(); } return result; }; Object.defineProperty(wrapped, '__progettoBlurWrapped', { value: true }); history[name] = wrapped; } addEventListener('popstate', () => { retryCounts.clear(); pageSuppressed.clear(); invalidateRulesCache(); clearTimeout(retryTimer); evaluateAll(); }, true); }
-  chrome.storage.onChanged.addListener(changes => { if (changes[SETTINGS_KEY]) { settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60, ...(changes[SETTINGS_KEY].newValue || {}) }; settingsReady = true; if (settingsCache.extensionEnabled === false) removeAll(); else if (!selection && selectionJobs === 0) queueEvaluate(0); } if (Object.keys(changes).some(k => k.startsWith(RULE_PREFIX) || k.startsWith('idx:'))) { if (selection || selectionJobs > 0) return; invalidateRulesCache(); queueEvaluate(0); } });
+  chrome.storage.onChanged.addListener(changes => { const keys = Object.keys(changes); if (changes[SETTINGS_KEY]) { settingsCache = { extensionEnabled: true, selectionEffect: 'blur', selectionIntensity: 60, ...(changes[SETTINGS_KEY].newValue || {}) }; settingsReady = true; if (settingsCache.extensionEnabled === false) removeAll(); else if (!selection && !selectionJobs) queueEvaluate(0); } if (keys.some(k => k.startsWith(RULE_PREFIX) || k.startsWith('idx:'))) { invalidateRulesCache(); if (!selection && !selectionJobs) queueEvaluate(0); } });
   installSpaHooks(); collectShadowRoots(); observeAllRoots(); evaluateAll();
 })();
