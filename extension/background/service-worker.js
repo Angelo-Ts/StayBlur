@@ -8,7 +8,18 @@
   function pageBlockedMessage(text) { return /cannot access contents|extensions gallery|chrome:\/\/|edge:\/\//i.test(text) ? 'Questa pagina non permette a progettoBlur di accedere al contenuto. Prova su una normale pagina web (http/https).' : text; }
   async function injectContent(tabId) { await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: CONTENT_SCRIPTS }); }
   async function sendToContent(tabId, message) { try { return await chrome.tabs.sendMessage(tabId, message); } catch (firstError) { try { await injectContent(tabId); return await chrome.tabs.sendMessage(tabId, message); } catch (injectError) { const text = String(injectError?.message || firstError?.message || injectError); throw new Error(pageBlockedMessage(text)); } } }
-  async function startSelectionOnPage(tabId) { try { await injectContent(tabId); const invoked = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: () => { if (typeof globalThis.__progettoBlurStartSelection === 'function') { globalThis.__progettoBlurStartSelection(); return true; } return false; } }); if (invoked.some(r => r.result === true)) return { ok: true }; return { ok: false, error: 'selection-script-not-available' }; } catch (error) { throw new Error(pageBlockedMessage(String(error?.message || error))); } }
+  async function startSelectionOnPage(tabId) {
+    try {
+      try { await chrome.tabs.sendMessage(tabId, { type: 'CONTENT_GET_STATE' }); }
+      catch (_) { await injectContent(tabId); }
+      const invoked = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: () => {
+        if (typeof globalThis.__progettoBlurStartSelection === 'function') { globalThis.__progettoBlurStartSelection(); return true; }
+        return false;
+      } });
+      if (invoked.some(r => r.result === true)) return { ok: true };
+      return { ok: false, error: 'selection-script-not-available' };
+    } catch (error) { throw new Error(pageBlockedMessage(String(error?.message || error))); }
+  }
   async function setExtensionEnabled(enabled) { const stored = await chrome.storage.local.get({ [SETTINGS_KEY]: {} }); const current = stored[SETTINGS_KEY] || {}; await chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, extensionEnabled: Boolean(enabled) } }); }
   async function getRule(ruleId) { const key = `rule:${ruleId}`; const stored = await chrome.storage.local.get({ [key]: null }); return stored[key] || null; }
   async function setRuleEnabled(ruleId, enabled) { const rule = await getRule(ruleId); if (!rule) return null; const updated = { ...rule, enabled: Boolean(enabled), status: enabled ? 'pending' : 'disabled', updatedAt: new Date().toISOString() }; await chrome.storage.local.set({ [`rule:${ruleId}`]: updated }); return updated; }
