@@ -11,7 +11,8 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = CSS;
-    root.appendChild(style);
+    const target = root.nodeType === Node.DOCUMENT_NODE ? (root.head || root.documentElement) : root;
+    if (target) target.appendChild(style);
   }
 
   function registerRoot(root) {
