@@ -20,12 +20,6 @@
     return !isElement(element) || element.closest(UI_SELECTOR) || element.id === 'pb-pixelate-svg';
   }
 
-  function viewportArea(element) {
-    const rect = element.getBoundingClientRect();
-    if (!rect.width || !rect.height) return 0;
-    return Math.max(0, rect.width * rect.height);
-  }
-
   function semanticScore(element) {
     const tag = element.tagName.toLowerCase();
     const role = (element.getAttribute('role') || '').toLowerCase();
@@ -43,13 +37,11 @@
     return score;
   }
 
-  function candidateScore(element, origin, depth) {
+  function candidateScore(element, origin, depth, originArea, viewportAreaTotal) {
     const tag = element.tagName.toLowerCase();
     const rect = element.getBoundingClientRect();
-    const area = viewportArea(element);
-    const viewportAreaTotal = Math.max(1, window.innerWidth * window.innerHeight);
+    const area = rect.width && rect.height ? Math.max(0, rect.width * rect.height) : 0;
     const areaRatio = area / viewportAreaTotal;
-    const originArea = Math.max(1, viewportArea(origin));
     const growth = Math.min(4, Math.log2(Math.max(1, area / originArea)));
     let score = semanticScore(element);
     if (growth > 0) score += Math.min(2.8, growth * 0.9);
@@ -71,14 +63,19 @@
     const origin = eventTarget;
     const originTag = origin.tagName.toLowerCase();
     if (INTERACTIVE_TAGS.has(originTag) || origin.hasAttribute('contenteditable')) return origin;
+
+    const viewportAreaTotal = Math.max(1, window.innerWidth * window.innerHeight);
+    const originRect = origin.getBoundingClientRect();
+    const originArea = Math.max(1, originRect.width * originRect.height);
+
     let best = origin;
-    let bestScore = candidateScore(origin, origin, 0);
+    let bestScore = candidateScore(origin, origin, 0, originArea, viewportAreaTotal);
     let candidate = origin.parentElement;
     for (let depth = 1; candidate && depth <= MAX_DEPTH; depth += 1) {
       if (isBlocked(candidate)) break;
       const tag = candidate.tagName.toLowerCase();
       if (tag === 'html' || tag === 'body' || tag === 'head') break;
-      const score = candidateScore(candidate, origin, depth);
+      const score = candidateScore(candidate, origin, depth, originArea, viewportAreaTotal);
       if (score > bestScore + 0.35) {
         best = candidate;
         bestScore = score;
